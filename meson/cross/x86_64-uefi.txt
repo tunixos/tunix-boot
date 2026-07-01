@@ -1,0 +1,17 @@
+# UEFI applications are PE32+ and position independent; the firmware has already
+# put us in long mode with paging on.
+[binaries]
+c = 'x86_64-elf-gcc'
+ar = 'x86_64-elf-ar'
+strip = 'x86_64-elf-strip'
+objcopy = 'x86_64-elf-objcopy'
+
+[host_machine]
+system = 'none'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+
+[built-in options]
+c_args = ['-fPIC', '-DTUNIX_BOOT_UEFI=1']
+c_link_args = ['-nostdlib', '-shared', '-Wl,-Bsymbolic', '-Wl,--build-id=none']

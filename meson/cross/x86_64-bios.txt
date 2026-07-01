@@ -1,0 +1,17 @@
+# The BIOS core runs in long mode; stage1 and the real-mode thunk are assembled
+# separately. Nothing here may assume a hosted environment.
+[binaries]
+c = 'x86_64-elf-gcc'
+ar = 'x86_64-elf-ar'
+strip = 'x86_64-elf-strip'
+objcopy = 'x86_64-elf-objcopy'
+
+[host_machine]
+system = 'none'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+
+[built-in options]
+c_args = ['-mcmodel=kernel']
+c_link_args = ['-nostdlib', '-static', '-no-pie', '-Wl,--build-id=none']
