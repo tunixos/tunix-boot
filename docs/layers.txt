@@ -1,0 +1,22 @@
+# Which layers a module may include from. One line per module:
+#   <module>: <allowed dependency> ...
+# Empty dependency list means the module may include nothing but itself.
+# tools/check-layering.py enforces this.
+
+util:
+log: util
+serial: util
+cpu: util
+memory: util cpu
+fw: util cpu memory log serial
+block: util memory fw log
+fs: util memory block log
+elf: util memory fs log
+config: util memory fs log
+video: util memory fw log
+terminal: util video log
+acpi: util memory fw log
+smp: util cpu memory acpi log
+pci: util memory acpi log
+protocol: util cpu memory fw elf video acpi smp pci log
+boot: util cpu memory fw block fs elf config video terminal acpi smp pci protocol log serial
