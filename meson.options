@@ -1,0 +1,7 @@
+option('tests', type: 'boolean', value: false,
+       description: 'Build the host unit tests')
+option('log_level', type: 'combo',
+       choices: ['none', 'error', 'warn', 'info', 'debug'], value: 'info',
+       description: 'Highest log level compiled in')
+option('serial_port', type: 'integer', min: 0, max: 65535, value: 1016,
+       description: 'I/O port of the debug serial line (0x3f8)')
