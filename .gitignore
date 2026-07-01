@@ -1,0 +1,11 @@
+build/
+build-*/
+*.o
+*.elf
+*.bin
+*.img
+*.efi
+subprojects/*/
+!subprojects/*.wrap
+compile_commands.json
+.cache/
