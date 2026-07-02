@@ -1,0 +1,16 @@
+unit_tests = [
+  ['reader', 'test_reader.c'],
+  ['str', 'test_str.c'],
+  ['checked', 'test_checked.c'],
+]
+
+foreach entry : unit_tests
+  name = entry[0]
+  executable_target = executable(
+    'test-' + name,
+    entry[1],
+    dependencies: util_dependency,
+    include_directories: include_directories('.'),
+  )
+  test(name, executable_target, suite: 'unit')
+endforeach
