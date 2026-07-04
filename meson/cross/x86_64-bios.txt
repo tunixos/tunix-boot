@@ -1,10 +1,14 @@
-# The BIOS core runs in long mode; stage1 and the real-mode thunk are assembled
-# separately. Nothing here may assume a hosted environment.
+# The BIOS target needs a freestanding x86_64 compiler and nothing else. On an
+# x86_64 Linux host the native gcc is one: -ffreestanding -nostdlib with our own
+# linker script produces the same object an x86_64-elf- toolchain would, without
+# making everyone build that toolchain first. Point these at a cross compiler if
+# you are building from another architecture.
 [binaries]
-c = 'x86_64-elf-gcc'
-ar = 'x86_64-elf-ar'
-strip = 'x86_64-elf-strip'
-objcopy = 'x86_64-elf-objcopy'
+c = 'gcc'
+ar = 'ar'
+strip = 'strip'
+objcopy = 'objcopy'
+nasm = 'nasm'
 
 [host_machine]
 system = 'none'
@@ -13,5 +17,5 @@ cpu = 'x86_64'
 endian = 'little'
 
 [built-in options]
-c_args = ['-mcmodel=kernel']
+c_args = ['-mcmodel=large', '-fno-pic']
 c_link_args = ['-nostdlib', '-static', '-no-pie', '-Wl,--build-id=none']
