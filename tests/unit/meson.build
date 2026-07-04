@@ -2,6 +2,8 @@ unit_tests = [
   ['reader', 'test_reader.c'],
   ['str', 'test_str.c'],
   ['checked', 'test_checked.c'],
+  ['cpuid', 'test_cpuid.c'],
+  ['gdt', 'test_gdt.c'],
 ]
 
 foreach entry : unit_tests
