@@ -1,0 +1,37 @@
+nasm = find_program('nasm')
+
+stage1 = custom_target(
+  'stage1.bin',
+  input: 'stage1.asm',
+  output: 'stage1.bin',
+  command: [nasm, '-f', 'bin', '@INPUT@', '-o', '@OUTPUT@'],
+  build_by_default: true,
+)
+
+stage2_entry = custom_target(
+  'stage2.o',
+  input: 'stage2.asm',
+  output: 'stage2.o',
+  command: [nasm, '-f', 'elf64', '@INPUT@', '-o', '@OUTPUT@'],
+)
+
+stage2_sources = files(
+  '../../boot/main.c',
+  '../../log/log.c',
+  '../../serial/serial.c',
+)
+
+stage2 = executable(
+  'stage2.elf',
+  stage2_sources,
+  stage2_entry,
+  dependencies: util_dependency,
+  link_args: [
+    '-T', meson.current_source_dir() / 'linker.ld',
+    '-Wl,-z,max-page-size=0x1000',
+    # Code and data share one segment by design here; there is no loader to
+    # apply permissions and nothing yet to protect them from.
+    '-Wl,--no-warn-rwx-segments',
+  ],
+  link_depends: files('linker.ld'),
+)
