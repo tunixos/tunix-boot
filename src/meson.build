@@ -8,6 +8,7 @@ util_sources = files(
 # replace, so they build for the host as well as the target.
 memory_sources = files(
   'memory/arena.c',
+  'memory/map.c',
 )
 
 cpu_sources = files(
