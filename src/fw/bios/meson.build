@@ -35,3 +35,35 @@ stage2 = executable(
   ],
   link_depends: files('linker.ld'),
 )
+
+# Stage2 is loaded by a boot record that knows nothing about ELF, so it ships as
+# a flat image at the address the linker script placed it.
+stage2_binary = custom_target(
+  'stage2.bin',
+  input: stage2,
+  output: 'stage2.bin',
+  command: [find_program('objcopy'), '-O', 'binary', '@INPUT@', '@OUTPUT@'],
+  build_by_default: true,
+)
+
+bios_image = custom_target(
+  'tunix-boot.img',
+  input: [stage1, stage2_binary],
+  output: 'tunix-boot.img',
+  command: [
+    python, meson.project_source_root() / 'tools' / 'make-image.py',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
+
+qemu = find_program('qemu-system-x86_64', required: false)
+if qemu.found()
+  test(
+    'bios-boot',
+    find_program(meson.project_source_root() / 'tests' / 'qemu' / 'boot-test.sh'),
+    args: [bios_image],
+    suite: 'qemu',
+    timeout: 60,
+  )
+endif
