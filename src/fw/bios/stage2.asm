@@ -44,6 +44,8 @@ SELECTOR_DATA32      equ 0x20
 section .stage2entry
 global stage2_start
 extern boot_main
+extern bss_start
+extern bss_end
 
 stage2_start:
     cli
@@ -141,6 +143,14 @@ long_mode_entry:
 
     mov rsp, STACK_TOP
     xor rbp, rbp
+
+    ; Nothing has cleared .bss. QEMU hands over zeroed memory and real firmware
+    ; does not, so every static in the core would be whatever was there before.
+    mov rdi, bss_start
+    mov rcx, bss_end
+    sub rcx, rdi
+    xor al, al
+    rep stosb
 
     xor rdi, rdi
     mov dil, [boot_drive]

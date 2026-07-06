@@ -12,7 +12,13 @@ SECTIONS
     .text        : { *(.text .text.*) }
     .rodata      : { *(.rodata .rodata.*) }
     .data        : { *(.data .data.*) }
-    .bss         : { *(.bss .bss.*) *(COMMON) }
+    /* Bracketed so stage2 can zero it: nothing loads this from disk, and the
+       BIOS does not promise memory arrives as anything in particular. */
+    .bss         : {
+        bss_start = .;
+        *(.bss .bss.*) *(COMMON)
+        bss_end = .;
+    }
 
     stage2_end = .;
 
