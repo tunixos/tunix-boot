@@ -6,6 +6,10 @@ util_sources = files(
 
 # cpuid.c and gdt.c reach hardware only through function pointers the tests
 # replace, so they build for the host as well as the target.
+memory_sources = files(
+  'memory/arena.c',
+)
+
 cpu_sources = files(
   'cpu/cpuid.c',
   'cpu/gdt.c',
@@ -13,7 +17,7 @@ cpu_sources = files(
 
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources,
+  util_sources + cpu_sources + memory_sources,
   include_directories: include_directories_root,
 )
 
