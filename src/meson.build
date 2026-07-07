@@ -16,9 +16,16 @@ cpu_sources = files(
   'cpu/gdt.c',
 )
 
+# e820.c parses a buffer somebody else filled in and touches no hardware, so it
+# builds for the host and the tests replay real firmware maps through it.
+fw_sources = files(
+  'fw/fw.c',
+  'fw/bios/e820.c',
+)
+
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources + memory_sources,
+  util_sources + cpu_sources + memory_sources + fw_sources,
   include_directories: include_directories_root,
 )
 
