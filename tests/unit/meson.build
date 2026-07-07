@@ -5,6 +5,7 @@ unit_tests = [
   ['cpuid', 'test_cpuid.c'],
   ['gdt', 'test_gdt.c'],
   ['arena', 'test_arena.c'],
+  ['map', 'test_map.c'],
 ]
 
 foreach entry : unit_tests
