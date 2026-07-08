@@ -8,6 +8,7 @@ unit_tests = [
   ['map', 'test_map.c'],
   ['e820', 'test_e820.c'],
   ['fw', 'test_fw.c'],
+  ['block', 'test_block.c'],
 ]
 
 foreach entry : unit_tests
