@@ -36,6 +36,17 @@ EFER_LONG_MODE       equ 1 << 8
 A20_PORT             equ 0x92
 A20_ENABLE_BIT       equ 1 << 1
 
+; INT 15h AX=E820h is a real-mode service, so the map is collected here and left
+; where the core can parse it. Kept clear of the page tables at 0x10000.
+E820_BUFFER_ADDRESS  equ 0x20000
+E820_BUFFER_SEGMENT  equ E820_BUFFER_ADDRESS >> 4
+E820_FUNCTION        equ 0xE820
+E820_SIGNATURE       equ 0x534D4150     ; 'SMAP'
+E820_ENTRY_BYTES     equ 24
+E820_MAX_ENTRIES     equ 128
+E820_ATTRIBUTE_OFFSET equ 20
+E820_ATTRIBUTE_VALID equ 1
+
 SELECTOR_CODE64      equ 0x08
 SELECTOR_DATA64      equ 0x10
 SELECTOR_CODE32      equ 0x18
@@ -57,6 +68,7 @@ stage2_start:
     mov [boot_drive], dl
 
     call enable_a20
+    call collect_memory_map
     call build_page_tables
 
     lgdt [gdt_pointer]
@@ -93,6 +105,51 @@ enable_a20:
     and al, 0xFE                  ; bit 0 would reset the machine
     out A20_PORT, al
 .done:
+    ret
+
+; Collect raw E820 entries and count them. Nothing here judges what the firmware
+; said: validation is e820_parse's job, where it can be tested.
+collect_memory_map:
+    pushad
+    push es
+
+    mov ax, E820_BUFFER_SEGMENT
+    mov es, ax
+    xor di, di
+    xor ebx, ebx
+    xor bp, bp
+
+.next_entry:
+    ; Seeded set, so firmware that answers with 20 bytes and never writes the
+    ; attributes word does not have its entries read as "ignore me".
+    mov dword [es:di + E820_ATTRIBUTE_OFFSET], E820_ATTRIBUTE_VALID
+
+    mov eax, E820_FUNCTION
+    mov edx, E820_SIGNATURE
+    mov ecx, E820_ENTRY_BYTES
+    int 0x15
+
+    ; Carry on the first call means the service does not exist; on a later one
+    ; it means the list ended. Both leave bp holding what we did get.
+    jc .done
+    cmp eax, E820_SIGNATURE
+    jne .done
+    test ecx, ecx
+    jz .done
+
+    inc bp
+    add di, E820_ENTRY_BYTES
+    cmp bp, E820_MAX_ENTRIES
+    jae .done
+
+    ; A zero continuation is the firmware saying that entry was the last.
+    test ebx, ebx
+    jnz .next_entry
+
+.done:
+    mov [memory_map_count], bp
+    pop es
+    popad
     ret
 
 build_page_tables:
@@ -154,6 +211,9 @@ long_mode_entry:
 
     xor rdi, rdi
     mov dil, [boot_drive]
+    xor rsi, rsi
+    mov si, [memory_map_count]
+    mov edx, E820_BUFFER_ADDRESS
     call boot_main
 
 .halt:
@@ -178,3 +238,4 @@ gdt_pointer:
     dq gdt_table
 
 boot_drive: db 0
+memory_map_count: dw 0
