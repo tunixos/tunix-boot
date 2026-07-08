@@ -17,8 +17,10 @@ stage2_entry = custom_target(
 
 stage2_sources = files(
   '../../boot/main.c',
+  '../../boot/bios_entry.c',
   '../../log/log.c',
   '../../serial/serial.c',
+  'fw_bios.c',
 )
 
 stage2 = executable(
