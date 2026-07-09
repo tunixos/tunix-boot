@@ -9,6 +9,7 @@ unit_tests = [
   ['e820', 'test_e820.c'],
   ['fw', 'test_fw.c'],
   ['block', 'test_block.c'],
+  ['ata', 'test_ata.c'],
 ]
 
 foreach entry : unit_tests
