@@ -9,7 +9,7 @@ serial: util
 cpu: util
 memory: util cpu
 fw: util cpu memory log serial
-block: util memory fw log
+block: util cpu memory fw log
 fs: util memory block log
 elf: util memory fs log
 config: util memory fs log
