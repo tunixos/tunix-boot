@@ -21,6 +21,7 @@ stage2_sources = files(
   '../../log/log.c',
   '../../serial/serial.c',
   'fw_bios.c',
+  '../../block/ata_port.c',
 )
 
 stage2 = executable(
