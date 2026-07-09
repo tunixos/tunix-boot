@@ -12,6 +12,7 @@ memory_sources = files(
 block_sources = files(
   'block/block.c',
   'block/ata.c',
+  'block/partition.c',
 )
 
 # cpuid.c and gdt.c reach hardware only through function pointers the tests
