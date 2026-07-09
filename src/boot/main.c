@@ -1,3 +1,4 @@
+#include "block/ata.h"
 #include "boot/core.h"
 #include "cpu/cpuid.h"
 #include "log/log.h"
@@ -17,8 +18,15 @@
 
 #define BYTES_PER_MIB (1024ULL * 1024ULL)
 
+/* Where the boot record keeps the mark that says it is one. */
+#define BOOT_RECORD_SIGNATURE_OFFSET 510U
+#define BOOT_RECORD_SIGNATURE 0xAA55U
+
 static struct memory_map memory;
 static struct arena loader_arena;
+static struct ata_channel boot_channel;
+static struct block_device boot_disk;
+static uint8_t boot_record[BLOCK_SECTOR_BYTES_DEFAULT];
 
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
@@ -60,6 +68,31 @@ static bool place_arena(const struct memory_map *map, struct arena *arena) {
     return true;
 }
 
+/* ATA is driven directly rather than through the firmware. Port I/O works the
+   same under BIOS and UEFI and from long mode, so this is one driver instead of
+   two, and no path here has to leave long mode to read a sector. */
+static bool attach_boot_disk(void) {
+    if (!ata_probe(ata_port_io(), ATA_PRIMARY_IO_BASE, ATA_PRIMARY_CONTROL_BASE,
+                   false, &boot_channel, &boot_disk)) {
+        return false;
+    }
+    LOG_INFO("disk %s, %u sectors, lba48 %s", boot_disk.name,
+             boot_disk.sector_count, boot_channel.lba48 ? "yes" : "no");
+
+    if (!block_read(&boot_disk, 0, 1, boot_record)) return false;
+
+    uint16_t signature =
+        (uint16_t)(boot_record[BOOT_RECORD_SIGNATURE_OFFSET] |
+                   (boot_record[BOOT_RECORD_SIGNATURE_OFFSET + 1U] << 8));
+    if (signature != BOOT_RECORD_SIGNATURE) {
+        LOG_ERROR("the disk read back is not the one we booted from");
+        return false;
+    }
+
+    LOG_INFO("boot record verified through the ata driver");
+    return true;
+}
+
 void boot_core(const struct fw_ops *fw) {
     LOG_INFO("tunix-boot on %s firmware", fw_name(fw));
 
@@ -80,6 +113,11 @@ void boot_core(const struct fw_ops *fw) {
 
     if (!place_arena(&memory, &loader_arena)) {
         LOG_ERROR("no room for the loader arena");
+        return;
+    }
+
+    if (!attach_boot_disk()) {
+        LOG_ERROR("no readable boot disk");
         return;
     }
 

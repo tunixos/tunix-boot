@@ -42,4 +42,10 @@ fi
 
 require "no arena was placed" "arena at [0-9a-f][0-9a-f]*"
 
+# The driver reads the image back off the disk it was loaded from, so the
+# sector count is the image's own and the signature is the one stage1 carries.
+require "the ata driver found no disk" "disk ata, [1-9][0-9]* sectors"
+require "the boot record did not read back" \
+    "boot record verified through the ata driver"
+
 exit 0
