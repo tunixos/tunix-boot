@@ -315,10 +315,96 @@ static void a_cluster_outside_the_volume_is_refused(void) {
     CHECK(!fat_read(&file, 0, sizeof got, got));
 }
 
-static void long_name_fragments_are_skipped(void) {
+static uint8_t short_checksum(const char *name) {
+    uint8_t sum = 0;
+    for (unsigned index = 0; index < FAT_ENTRY_NAME_BYTES; index++)
+        sum = (uint8_t)(((sum & 1U) << 7) + (sum >> 1) + (uint8_t)name[index]);
+    return sum;
+}
+
+static const uint8_t long_offsets[FAT_LONG_CHARS_PER_ENTRY] = {
+    1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30,
+};
+
+/* Writes the long-name entries for `long_name`, in the reverse order the
+   filesystem stores them, immediately before where the 8.3 entry will go. */
+static void append_long_name(uint32_t directory_cluster, const char *long_name,
+                             size_t length, const char *short_name) {
+    unsigned fragments =
+        (unsigned)((length + FAT_LONG_CHARS_PER_ENTRY - 1U) / FAT_LONG_CHARS_PER_ENTRY);
+    uint8_t checksum = short_checksum(short_name);
+
+    for (unsigned fragment = fragments; fragment >= 1U; fragment--) {
+        uint8_t *at = cluster_data(directory_cluster);
+        while (at[FAT_ENTRY_NAME_OFFSET] != FAT_ENTRY_END_OF_DIRECTORY)
+            at += FAT_DIRECTORY_ENTRY_BYTES;
+
+        at[FAT_LONG_SEQUENCE_OFFSET] = (uint8_t)fragment;
+        if (fragment == fragments)
+            at[FAT_LONG_SEQUENCE_OFFSET] |= FAT_LONG_SEQUENCE_LAST;
+        at[FAT_ENTRY_ATTRIBUTES_OFFSET] = FAT_ATTRIBUTE_LONG_NAME;
+        at[FAT_LONG_CHECKSUM_OFFSET] = checksum;
+
+        for (unsigned index = 0; index < FAT_LONG_CHARS_PER_ENTRY; index++) {
+            size_t position = (size_t)(fragment - 1U) * FAT_LONG_CHARS_PER_ENTRY + index;
+            uint16_t unit;
+            if (position < length) unit = (uint16_t)(uint8_t)long_name[position];
+            else if (position == length) unit = 0;
+            else unit = 0xFFFFU;
+            put_u16(at + long_offsets[index], unit);
+        }
+    }
+}
+
+static void reads_a_file_by_its_long_name(void) {
+    static uint8_t got[24];
+    const char *name = "tunix-kernel.elf";
     format();
-    /* A long-name entry sits immediately before the entry it names; a reader
-       that does not skip it matches on fragments of a UTF-16 name. */
+    append_long_name(ROOT_CLUSTER, name, 16, "TUNIX~1 ELF");
+    write_file(ROOT_CLUSTER, "TUNIX~1 ELF", sizeof got);
+    CHECK(fat_mount(&device, &volume));
+
+    struct fat_file file;
+    CHECK(fat_open(&volume, "/tunix-kernel.elf", &file));
+    CHECK(file.size == sizeof got);
+    CHECK(fat_read(&file, 0, sizeof got, got));
+    CHECK(content_matches(got, 0, sizeof got));
+
+    /* Case-insensitive, like the short name, and the 8.3 name still works. */
+    CHECK(fat_open(&volume, "/TUNIX-KERNEL.ELF", &file));
+    CHECK(fat_open(&volume, "/tunix~1.elf", &file));
+    CHECK(!fat_open(&volume, "/tunix-kernel.el", &file));
+    (void)name;
+}
+
+static void a_long_name_spanning_several_entries(void) {
+    const char *name = "a-rather-long-configuration-file-name.cfg";
+    format();
+    append_long_name(ROOT_CLUSTER, name, 41, "ARATHE~1CFG");
+    write_file(ROOT_CLUSTER, "ARATHE~1CFG", 8);
+    CHECK(fat_mount(&device, &volume));
+
+    struct fat_file file;
+    CHECK(fat_open(&volume, "/a-rather-long-configuration-file-name.cfg", &file));
+    CHECK(file.size == 8);
+}
+
+static void long_name_fragments_with_the_wrong_checksum_are_ignored(void) {
+    format();
+    append_long_name(ROOT_CLUSTER, "orphaned.txt", 12, "NOTTHE~1TXT");
+    write_file(ROOT_CLUSTER, "REAL    TXT", 16);
+    CHECK(fat_mount(&device, &volume));
+
+    /* Fragments left by a deleted file must not attach themselves to whatever
+       entry happens to follow them. */
+    struct fat_file file;
+    CHECK(!fat_open(&volume, "/orphaned.txt", &file));
+    CHECK(fat_open(&volume, "/real.txt", &file));
+    CHECK(file.size == 16);
+}
+
+static void a_stray_fragment_is_not_a_file(void) {
+    format();
     append_entry(ROOT_CLUSTER, "\x41" "AAAAAAAAAA", FAT_ATTRIBUTE_LONG_NAME, 0, 0);
     write_file(ROOT_CLUSTER, "REAL    TXT", 16);
     CHECK(fat_mount(&device, &volume));
@@ -351,6 +437,9 @@ TEST_MAIN(
     refuses_to_read_past_the_end_of_a_file();
     a_chain_that_loops_does_not_hang();
     a_cluster_outside_the_volume_is_refused();
-    long_name_fragments_are_skipped();
+    reads_a_file_by_its_long_name();
+    a_long_name_spanning_several_entries();
+    long_name_fragments_with_the_wrong_checksum_are_ignored();
+    a_stray_fragment_is_not_a_file();
     the_volume_label_is_not_a_file();
 )
