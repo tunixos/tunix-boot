@@ -11,6 +11,7 @@ unit_tests = [
   ['block', 'test_block.c'],
   ['ata', 'test_ata.c'],
   ['partition', 'test_partition.c'],
+  ['fat', 'test_fat.c'],
 ]
 
 foreach entry : unit_tests
