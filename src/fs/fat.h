@@ -58,8 +58,19 @@
 #define FAT_CLUSTER_END 0x0FFFFFF8U
 #define FAT_FAT_ENTRY_BYTES 4U
 
+/* Long-name fragments, stored in the entries before the 8.3 entry they name and
+   in reverse order. Each holds 13 UTF-16 units in three runs, which is why the
+   offsets below are a list rather than a stride. */
+#define FAT_LONG_SEQUENCE_OFFSET 0U
+#define FAT_LONG_SEQUENCE_MASK 0x1FU
+#define FAT_LONG_SEQUENCE_LAST 0x40U
+#define FAT_LONG_CHECKSUM_OFFSET 13U
+#define FAT_LONG_CHARS_PER_ENTRY 13U
+#define FAT_LONG_MAX_SEQUENCE 20U
+#define FAT_LONG_NAME_MAX (FAT_LONG_CHARS_PER_ENTRY * FAT_LONG_MAX_SEQUENCE)
+
 #define FAT_MAX_PATH_BYTES 256U
-#define FAT_MAX_NAME_BYTES 13U
+#define FAT_MAX_NAME_BYTES FAT_LONG_NAME_MAX
 
 struct fat_volume {
     struct block_device *device;

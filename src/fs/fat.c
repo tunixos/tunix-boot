@@ -213,13 +213,98 @@ static bool name_matches(const uint8_t *entry_name, const char *name,
     return true;
 }
 
+/* Where the 13 characters of a long-name fragment sit inside its 32 bytes. */
+static const uint8_t long_name_offsets[FAT_LONG_CHARS_PER_ENTRY] = {
+    1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30,
+};
+
+struct long_name {
+    char text[FAT_LONG_NAME_MAX];
+    size_t length;
+    uint8_t checksum;
+    bool valid;
+};
+
+/* The one link between a long name and the 8.3 entry it belongs to. Without
+   checking it, fragments left behind by a deleted file attach themselves to
+   whatever entry happens to follow. */
+static uint8_t short_name_checksum(const uint8_t *name) {
+    uint8_t sum = 0;
+    for (unsigned index = 0; index < FAT_ENTRY_NAME_BYTES; index++) {
+        sum = (uint8_t)(((sum & 1U) << 7) + (sum >> 1) + name[index]);
+    }
+    return sum;
+}
+
+static void long_name_reset(struct long_name *pending) {
+    pending->length = 0;
+    pending->valid = false;
+}
+
+static void long_name_accumulate(struct long_name *pending, const uint8_t *entry) {
+    uint8_t sequence = entry[FAT_LONG_SEQUENCE_OFFSET] & FAT_LONG_SEQUENCE_MASK;
+    if (sequence == 0 || sequence > FAT_LONG_MAX_SEQUENCE) {
+        long_name_reset(pending);
+        return;
+    }
+
+    if (entry[FAT_LONG_SEQUENCE_OFFSET] & FAT_LONG_SEQUENCE_LAST) {
+        long_name_reset(pending);
+        pending->checksum = entry[FAT_LONG_CHECKSUM_OFFSET];
+        pending->length = (size_t)sequence * FAT_LONG_CHARS_PER_ENTRY;
+        pending->valid = true;
+    }
+    if (!pending->valid) return;
+    if (entry[FAT_LONG_CHECKSUM_OFFSET] != pending->checksum) {
+        long_name_reset(pending);
+        return;
+    }
+
+    size_t base = (size_t)(sequence - 1U) * FAT_LONG_CHARS_PER_ENTRY;
+    for (unsigned index = 0; index < FAT_LONG_CHARS_PER_ENTRY; index++) {
+        uint8_t at = long_name_offsets[index];
+        uint16_t unit = (uint16_t)(entry[at] | (entry[at + 1U] << 8));
+        size_t position = base + index;
+        if (position >= FAT_LONG_NAME_MAX) {
+            long_name_reset(pending);
+            return;
+        }
+        if (unit == 0x0000U || unit == 0xFFFFU) {
+            /* The name ends here; anything after is padding. */
+            if (position < pending->length) pending->length = position;
+            continue;
+        }
+        /* Only ASCII can be compared against the paths this loader is given.
+           A name with anything else falls back to its 8.3 form rather than
+           being matched approximately. */
+        if (unit > 0x7FU) {
+            long_name_reset(pending);
+            return;
+        }
+        pending->text[position] = (char)unit;
+    }
+}
+
+static bool long_name_matches(const struct long_name *pending, const char *name,
+                              size_t length) {
+    if (!pending->valid || pending->length != length) return false;
+    for (size_t index = 0; index < length; index++) {
+        if (upper((uint8_t)pending->text[index]) != upper((uint8_t)name[index]))
+            return false;
+    }
+    return true;
+}
+
 /* One directory, searched for one path component. */
 static bool find_in_directory(struct fat_volume *volume, uint32_t cluster,
                               const char *name, size_t length,
                               struct fat_file *out) {
     uint8_t entry[FAT_DIRECTORY_ENTRY_BYTES];
+    struct long_name pending;
     uint64_t offset = 0;
     uint64_t entries_seen = 0;
+
+    long_name_reset(&pending);
     uint64_t maximum_entries =
         (uint64_t)volume->cluster_count * volume->cluster_bytes /
         FAT_DIRECTORY_ENTRY_BYTES;
@@ -230,13 +315,28 @@ static bool find_in_directory(struct fat_volume *volume, uint32_t cluster,
 
         uint8_t first = entry[FAT_ENTRY_NAME_OFFSET];
         if (first == FAT_ENTRY_END_OF_DIRECTORY) return false;
-        if (first == FAT_ENTRY_DELETED) continue;
+        if (first == FAT_ENTRY_DELETED) {
+            long_name_reset(&pending);
+            continue;
+        }
 
         uint8_t attributes = entry[FAT_ENTRY_ATTRIBUTES_OFFSET];
-        if (attributes == FAT_ATTRIBUTE_LONG_NAME) continue;
-        if (attributes & FAT_ATTRIBUTE_VOLUME_LABEL) continue;
+        if (attributes == FAT_ATTRIBUTE_LONG_NAME) {
+            long_name_accumulate(&pending, entry);
+            continue;
+        }
 
-        if (!name_matches(entry + FAT_ENTRY_NAME_OFFSET, name, length)) continue;
+        const uint8_t *short_name = entry + FAT_ENTRY_NAME_OFFSET;
+        bool long_belongs = pending.valid &&
+                            pending.checksum == short_name_checksum(short_name);
+        /* Either name reaches the file: giving something a long name does not
+           take its 8.3 name away, and both are what a user may have written. */
+        bool matched = (long_belongs && long_name_matches(&pending, name, length)) ||
+                       name_matches(short_name, name, length);
+        long_name_reset(&pending);
+
+        if (attributes & FAT_ATTRIBUTE_VOLUME_LABEL) continue;
+        if (!matched) continue;
 
         uint32_t high = (uint32_t)(entry[FAT_ENTRY_CLUSTER_HIGH_OFFSET] |
                                    (entry[FAT_ENTRY_CLUSTER_HIGH_OFFSET + 1U] << 8));
