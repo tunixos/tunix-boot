@@ -19,6 +19,7 @@ block_sources = files(
 # replace, so they build for the host as well as the target.
 fs_sources = files(
   'fs/fat.c',
+  'fs/ext2.c',
 )
 
 cpu_sources = files(
