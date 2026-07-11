@@ -13,6 +13,7 @@ unit_tests = [
   ['partition', 'test_partition.c'],
   ['fat', 'test_fat.c'],
   ['ext2', 'test_ext2.c'],
+  ['elf', 'test_elf.c'],
 ]
 
 foreach entry : unit_tests
