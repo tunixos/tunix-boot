@@ -24,3 +24,12 @@ SECTIONS
 
     /DISCARD/ : { *(.comment) *(.note.*) *(.eh_frame) }
 }
+
+/* Where stage2.asm puts the E820 buffer and the page tables. Growing past it
+   means the .bss clear zeroes the page tables after they were built, which
+   triple faults with nothing on the serial line to say why. Keep in step with
+   E820_BUFFER_ADDRESS in stage2.asm. */
+LOW_MEMORY_SCRATCH_BASE = 0x30000;
+
+ASSERT(bss_end <= LOW_MEMORY_SCRATCH_BASE,
+       "stage2 has grown into the memory it uses for page tables")

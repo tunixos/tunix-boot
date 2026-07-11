@@ -14,7 +14,10 @@ DEFAULT ABS
 
 STACK_TOP            equ 0x7C00
 
-PAGE_TABLE_BASE      equ 0x10000
+; Above anything stage2 itself can occupy. stage2 loads at 0x7E00 and its .bss
+; grows with the core, so a base just past the loaded image is a base that one
+; day gets zeroed by the .bss clear below. linker.ld asserts this stays true.
+PAGE_TABLE_BASE      equ 0x40000
 PML4_ADDRESS         equ PAGE_TABLE_BASE
 PDPT_ADDRESS         equ PAGE_TABLE_BASE + 0x1000
 PAGE_DIRECTORY_BASE  equ PAGE_TABLE_BASE + 0x2000
@@ -38,7 +41,7 @@ A20_ENABLE_BIT       equ 1 << 1
 
 ; INT 15h AX=E820h is a real-mode service, so the map is collected here and left
 ; where the core can parse it. Kept clear of the page tables at 0x10000.
-E820_BUFFER_ADDRESS  equ 0x20000
+E820_BUFFER_ADDRESS  equ 0x30000
 E820_BUFFER_SEGMENT  equ E820_BUFFER_ADDRESS >> 4
 E820_FUNCTION        equ 0xE820
 E820_SIGNATURE       equ 0x534D4150     ; 'SMAP'
