@@ -17,6 +17,10 @@ block_sources = files(
 
 # cpuid.c and gdt.c reach hardware only through function pointers the tests
 # replace, so they build for the host as well as the target.
+elf_sources = files(
+  'elf/elf.c',
+)
+
 fs_sources = files(
   'fs/fat.c',
   'fs/ext2.c',
@@ -36,7 +40,7 @@ fw_sources = files(
 
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources,
+  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources,
   include_directories: include_directories_root,
 )
 
