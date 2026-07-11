@@ -48,4 +48,12 @@ require "the ata driver found no disk" "disk ata, [1-9][0-9]* sectors"
 require "the boot record did not read back" \
     "boot record verified through the ata driver"
 
+# The partition table, the partition window and the filesystem, ending in the
+# exact bytes make-image.py wrote into the image. Nothing below this line can
+# pass unless every layer beneath it addressed the disk correctly.
+require "the partition table was not read" "[1-9][0-9]* partitions, mbr table"
+require "the filesystem did not mount" "fat32 at lba 2048, [1-9][0-9]* clusters"
+require "the file did not read back with the contents it was written with" \
+    "read 28 bytes from /tunix.cfg: tunix-boot filesystem check"
+
 exit 0
