@@ -55,6 +55,14 @@ add_project_arguments(common_arguments, language: 'c')
 
 include_directories_root = include_directories('src', 'include')
 
+nasm = find_program('nasm', required: not building_for_host)
+
+# A kernel for the loader to load. Built by the real toolchain, so the image the
+# loader is tested against is one it did not help produce.
+if not building_for_host
+  subdir('tests/kernel')
+endif
+
 subdir('src')
 
 if get_option('tests') and building_for_host

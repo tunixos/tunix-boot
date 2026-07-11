@@ -1,5 +1,3 @@
-nasm = find_program('nasm')
-
 stage1 = custom_target(
   'stage1.bin',
   input: 'stage1.asm',
@@ -51,11 +49,11 @@ stage2_binary = custom_target(
 
 bios_image = custom_target(
   'tunix-boot.img',
-  input: [stage1, stage2_binary],
+  input: [stage1, stage2_binary, test_kernel],
   output: 'tunix-boot.img',
   command: [
     python, meson.project_source_root() / 'tools' / 'make-image.py',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@', '@INPUT2@',
   ],
   build_by_default: true,
 )
