@@ -1,6 +1,8 @@
 #include "block/ata.h"
+#include "block/partition.h"
 #include "boot/core.h"
 #include "cpu/cpuid.h"
+#include "fs/fat.h"
 #include "log/log.h"
 #include "memory/arena.h"
 
@@ -27,6 +29,14 @@ static struct arena loader_arena;
 static struct ata_channel boot_channel;
 static struct block_device boot_disk;
 static uint8_t boot_record[BLOCK_SECTOR_BYTES_DEFAULT];
+static struct partition_table partitions;
+static struct partition_view boot_view;
+static struct block_device boot_partition;
+static struct fat_volume boot_volume;
+
+/* The file the image carries, read back to prove the whole path works. */
+#define PROBE_PATH "/tunix.cfg"
+#define PROBE_BYTES 64U
 
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
@@ -93,6 +103,55 @@ static bool attach_boot_disk(void) {
     return true;
 }
 
+/* Mounts the first partition that turns out to hold a filesystem, rather than
+   trusting the type byte: the byte is a hint that costs nothing to forge, and
+   mounting is the only thing that actually answers the question. */
+static bool mount_boot_filesystem(void) {
+    if (!partition_table_read(&boot_disk, &partitions)) {
+        LOG_ERROR("no partition table on the boot disk");
+        return false;
+    }
+    LOG_INFO("%u partitions, %s table", (uint64_t)partitions.count,
+             partitions.gpt ? "gpt" : "mbr");
+
+    for (unsigned index = 0; index < partitions.count; index++) {
+        const struct partition *entry = &partitions.entries[index];
+        if (!partition_open(&boot_disk, entry, &boot_view, &boot_partition))
+            continue;
+        if (!fat_mount(&boot_partition, &boot_volume)) continue;
+
+        LOG_INFO("fat32 at lba %u, %u clusters of %u bytes", entry->start_lba,
+                 (uint64_t)boot_volume.cluster_count,
+                 (uint64_t)boot_volume.cluster_bytes);
+        return true;
+    }
+    LOG_ERROR("no partition held a filesystem this loader can read");
+    return false;
+}
+
+static bool read_probe_file(void) {
+    struct fat_file file;
+    if (!fat_open(&boot_volume, PROBE_PATH, &file)) {
+        LOG_ERROR("%s is not on the filesystem", PROBE_PATH);
+        return false;
+    }
+    if (file.size == 0 || file.size > PROBE_BYTES) {
+        LOG_ERROR("%s is not the size it should be", PROBE_PATH);
+        return false;
+    }
+
+    uint8_t contents[PROBE_BYTES];
+    if (!fat_read(&file, 0, file.size, contents)) {
+        LOG_ERROR("%s would not read", PROBE_PATH);
+        return false;
+    }
+
+    contents[file.size - 1U] = '\0';
+    LOG_INFO("read %u bytes from %s: %s", (uint64_t)file.size, PROBE_PATH,
+             (const char *)contents);
+    return true;
+}
+
 void boot_core(const struct fw_ops *fw) {
     LOG_INFO("tunix-boot on %s firmware", fw_name(fw));
 
@@ -120,6 +179,9 @@ void boot_core(const struct fw_ops *fw) {
         LOG_ERROR("no readable boot disk");
         return;
     }
+
+    if (!mount_boot_filesystem()) return;
+    if (!read_probe_file()) return;
 
     LOG_INFO("stage2 reached the core");
 }
