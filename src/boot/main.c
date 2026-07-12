@@ -6,6 +6,7 @@
 #include "fs/fat.h"
 #include "log/log.h"
 #include "memory/arena.h"
+#include "memory/paging.h"
 
 #define LOADER_ARENA_BYTES (1024ULL * 1024ULL)
 #define LOADER_ARENA_ALIGNMENT (4096ULL)
@@ -47,6 +48,13 @@ static struct fat_volume boot_volume;
 #define KERNEL_LIMIT_HIGH LOADER_ADDRESS_LIMIT
 
 static struct fat_file kernel_file;
+static struct page_tables kernel_tables;
+static struct elf_image kernel_image;
+
+/* The loader keeps running after the switch — its own code, stack, page tables
+   and the memory it just loaded the kernel into all live down here — so the
+   identity map stage2 built has to be reproduced in the kernel's tables. */
+#define IDENTITY_MAP_BYTES LOADER_ADDRESS_LIMIT
 
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
@@ -177,21 +185,20 @@ static bool load_kernel(uint64_t *entry) {
         return false;
     }
 
-    struct elf_image kernel;
-    if (!elf_parse(kernel_read, &kernel_file, &kernel)) {
+    if (!elf_parse(kernel_read, &kernel_file, &kernel_image)) {
         LOG_ERROR("%s is not an elf64 kernel this loader can run", KERNEL_PATH);
         return false;
     }
     LOG_INFO("kernel %u segments, %x..%x, entry %x",
-             (uint64_t)kernel.segment_count, kernel.lowest_address,
-             kernel.highest_address, kernel.entry);
+             (uint64_t)kernel_image.segment_count, kernel_image.lowest_address,
+             kernel_image.highest_address, kernel_image.entry);
 
     /* Every segment must fall in memory the firmware called usable. Checking
        the span is not enough on its own, but a span that fails is decisive. */
     const struct memory_region *region =
-        memory_map_find(&memory, kernel.lowest_address);
+        memory_map_find(&memory, kernel_image.lowest_address);
     if (!region || region->kind != MEMORY_KIND_USABLE ||
-        kernel.highest_address > region->base + region->length) {
+        kernel_image.highest_address > region->base + region->length) {
         LOG_ERROR("the kernel does not fit in one run of usable memory");
         return false;
     }
@@ -201,15 +208,59 @@ static bool load_kernel(uint64_t *entry) {
         .limit_low = KERNEL_LIMIT_LOW,
         .limit_high = KERNEL_LIMIT_HIGH,
     };
-    if (!elf_load(kernel_read, &kernel_file, &kernel, &placement)) {
+    if (!elf_load(kernel_read, &kernel_file, &kernel_image, &placement)) {
         LOG_ERROR("the kernel would not load where it asked to be");
         return false;
     }
 
-    *entry = elf_entry_point(&kernel, &placement);
+    *entry = elf_entry_point(&kernel_image, &placement);
     if (*entry == 0) return false;
 
     LOG_INFO("kernel loaded, entering at %x", *entry);
+    return true;
+}
+
+/* A segment's own pages, rounded out at both ends: the mapping is by page and a
+   segment rarely starts or ends on one. */
+static bool map_segment(const struct elf_segment *segment, bool writable) {
+    uint64_t virtual = segment->virtual_address & ~(PAGE_BYTES - 1U);
+    uint64_t physical = segment->physical_address & ~(PAGE_BYTES - 1U);
+    uint64_t leading = segment->virtual_address - virtual;
+
+    uint64_t bytes = segment->memory_bytes + leading;
+    bytes = (bytes + PAGE_BYTES - 1U) & ~(PAGE_BYTES - 1U);
+
+    uint64_t flags = writable ? PAGE_WRITABLE : 0;
+    if (!(segment->flags & ELF_FLAG_EXECUTE)) flags |= PAGE_NO_EXECUTE;
+
+    return paging_map(&kernel_tables, virtual, physical, bytes, flags);
+}
+
+static bool build_kernel_tables(const struct elf_image *kernel,
+                                const struct cpu_features *features) {
+    if (!paging_create(&kernel_tables, &loader_arena, features->gigabyte_pages))
+        return false;
+
+    if (!paging_map(&kernel_tables, 0, 0, IDENTITY_MAP_BYTES, PAGE_WRITABLE)) {
+        LOG_ERROR("could not identity map low memory");
+        return false;
+    }
+
+    for (unsigned index = 0; index < kernel->segment_count; index++) {
+        const struct elf_segment *segment = &kernel->segments[index];
+        /* A segment already reachable at its own address needs nothing more;
+           mapping it twice would be refused as a remap. */
+        if (segment->virtual_address == segment->physical_address) continue;
+
+        if (!map_segment(segment, (segment->flags & ELF_FLAG_WRITE) != 0)) {
+            LOG_ERROR("could not map a kernel segment at %x",
+                      segment->virtual_address);
+            return false;
+        }
+    }
+
+    LOG_INFO("page tables at %x, %u KiB of them", kernel_tables.root,
+             arena_used(&loader_arena) / 1024ULL);
     return true;
 }
 
@@ -248,9 +299,15 @@ void boot_core(const struct fw_ops *fw) {
 
     uint64_t entry;
     if (!load_kernel(&entry)) return;
+    if (!build_kernel_tables(&kernel_image, &features)) return;
+
+    /* From here the kernel's map is the one in force. The loader survives it
+       only because that map identity maps everything the loader is standing on. */
+    paging_activate(&kernel_tables);
+    LOG_INFO("kernel page tables active, entering at %x", entry);
 
     /* No handoff protocol yet: the kernel is entered with nothing but the
-       machine state stage2 established. That is M9. */
+       machine state established here. That is M9. */
     ((void (*)(void))(uintptr_t)entry)();
     LOG_ERROR("the kernel returned");
 }

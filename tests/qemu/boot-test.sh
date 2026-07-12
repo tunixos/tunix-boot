@@ -59,7 +59,14 @@ require "the file did not read back with the contents it was written with" \
 # The kernel is built by the real toolchain and entered for real. These last two
 # lines are printed by the kernel itself, so nothing but a working loader can
 # produce them: the second says the loader zeroed the .bss it was handed.
-require "the kernel was not loaded" "kernel loaded, entering at [0-9a-f]"
+require "the kernel was not loaded" "kernel loaded, entering at ffffffff80000000"
+require "no page tables were built" "page tables at [0-9a-f][0-9a-f]*"
+require "the kernel page tables were not installed" \
+    "kernel page tables active"
+
+# The kernel is linked into the higher half and loaded into low physical memory,
+# so it can only run at all if the tables the loader built are correct — and the
+# loader can only still be alive to have jumped if it mapped itself too.
 require "the kernel did not run" "^kernel running$"
 require "the kernel found its bss dirty" "^kernel bss was zeroed$"
 
