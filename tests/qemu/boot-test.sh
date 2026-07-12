@@ -56,4 +56,11 @@ require "the filesystem did not mount" "fat32 at lba 2048, [1-9][0-9]* clusters"
 require "the file did not read back with the contents it was written with" \
     "read 28 bytes from /tunix.cfg: tunix-boot filesystem check"
 
+# The kernel is built by the real toolchain and entered for real. These last two
+# lines are printed by the kernel itself, so nothing but a working loader can
+# produce them: the second says the loader zeroed the .bss it was handed.
+require "the kernel was not loaded" "kernel loaded, entering at [0-9a-f]"
+require "the kernel did not run" "^kernel running$"
+require "the kernel found its bss dirty" "^kernel bss was zeroed$"
+
 exit 0
