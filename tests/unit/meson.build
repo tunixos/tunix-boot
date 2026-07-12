@@ -14,6 +14,7 @@ unit_tests = [
   ['fat', 'test_fat.c'],
   ['ext2', 'test_ext2.c'],
   ['elf', 'test_elf.c'],
+  ['paging', 'test_paging.c'],
 ]
 
 foreach entry : unit_tests
