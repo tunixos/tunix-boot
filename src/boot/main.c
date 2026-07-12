@@ -2,6 +2,7 @@
 #include "block/partition.h"
 #include "boot/core.h"
 #include "cpu/cpuid.h"
+#include "elf/elf.h"
 #include "fs/fat.h"
 #include "log/log.h"
 #include "memory/arena.h"
@@ -37,6 +38,15 @@ static struct fat_volume boot_volume;
 /* The file the image carries, read back to prove the whole path works. */
 #define PROBE_PATH "/tunix.cfg"
 #define PROBE_BYTES 64U
+
+#define KERNEL_PATH "/kernel.elf"
+
+/* The kernel is loaded where it asked to be, and the only memory it may land in
+   is memory the firmware called usable and the identity map covers. */
+#define KERNEL_LIMIT_LOW (1024ULL * 1024ULL)
+#define KERNEL_LIMIT_HIGH LOADER_ADDRESS_LIMIT
+
+static struct fat_file kernel_file;
 
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
@@ -152,6 +162,57 @@ static bool read_probe_file(void) {
     return true;
 }
 
+/* The ELF reader speaks to whatever the kernel happens to live on. */
+static bool kernel_read(void *context, uint64_t offset, size_t length,
+                        void *out) {
+    return fat_read((struct fat_file *)context, offset, length, out);
+}
+
+/* Nothing here checks that the kernel's segments miss the loader's own memory:
+   the loader sits below a megabyte and the window starts at one, so a segment
+   that would reach it is refused by elf_load before anything moves. */
+static bool load_kernel(uint64_t *entry) {
+    if (!fat_open(&boot_volume, KERNEL_PATH, &kernel_file)) {
+        LOG_ERROR("%s is not on the filesystem", KERNEL_PATH);
+        return false;
+    }
+
+    struct elf_image kernel;
+    if (!elf_parse(kernel_read, &kernel_file, &kernel)) {
+        LOG_ERROR("%s is not an elf64 kernel this loader can run", KERNEL_PATH);
+        return false;
+    }
+    LOG_INFO("kernel %u segments, %x..%x, entry %x",
+             (uint64_t)kernel.segment_count, kernel.lowest_address,
+             kernel.highest_address, kernel.entry);
+
+    /* Every segment must fall in memory the firmware called usable. Checking
+       the span is not enough on its own, but a span that fails is decisive. */
+    const struct memory_region *region =
+        memory_map_find(&memory, kernel.lowest_address);
+    if (!region || region->kind != MEMORY_KIND_USABLE ||
+        kernel.highest_address > region->base + region->length) {
+        LOG_ERROR("the kernel does not fit in one run of usable memory");
+        return false;
+    }
+
+    struct elf_placement placement = {
+        .bias = 0,
+        .limit_low = KERNEL_LIMIT_LOW,
+        .limit_high = KERNEL_LIMIT_HIGH,
+    };
+    if (!elf_load(kernel_read, &kernel_file, &kernel, &placement)) {
+        LOG_ERROR("the kernel would not load where it asked to be");
+        return false;
+    }
+
+    *entry = elf_entry_point(&kernel, &placement);
+    if (*entry == 0) return false;
+
+    LOG_INFO("kernel loaded, entering at %x", *entry);
+    return true;
+}
+
 void boot_core(const struct fw_ops *fw) {
     LOG_INFO("tunix-boot on %s firmware", fw_name(fw));
 
@@ -184,4 +245,12 @@ void boot_core(const struct fw_ops *fw) {
     if (!read_probe_file()) return;
 
     LOG_INFO("stage2 reached the core");
+
+    uint64_t entry;
+    if (!load_kernel(&entry)) return;
+
+    /* No handoff protocol yet: the kernel is entered with nothing but the
+       machine state stage2 established. That is M9. */
+    ((void (*)(void))(uintptr_t)entry)();
+    LOG_ERROR("the kernel returned");
 }
