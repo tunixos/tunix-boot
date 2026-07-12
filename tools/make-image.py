@@ -14,7 +14,9 @@ import sys
 
 SECTOR_BYTES = 512
 BOOT_RECORD_SECTORS = 1
-STAGE2_MAX_SECTORS = 64
+# One INT 13h read. Many BIOSes refuse more than 127 sectors in a single call,
+# so growing past this means teaching stage1 to read in chunks, not raising it.
+STAGE2_MAX_SECTORS = 120
 
 # Where the partition table lives inside the boot record. stage1 is well short
 # of this; make-image refuses to write over it if that ever stops being true.
@@ -42,6 +44,7 @@ ATTRIBUTE_ARCHIVE = 0x20
 # means changing tests/qemu/boot-test.sh with it.
 PAYLOAD_NAME = b"TUNIX   CFG"
 PAYLOAD = b"tunix-boot filesystem check\n"
+KERNEL_NAME = b"KERNEL  ELF"
 
 
 def put_u16(buffer, offset, value):
@@ -52,8 +55,8 @@ def put_u32(buffer, offset, value):
     buffer[offset:offset + 4] = value.to_bytes(4, "little")
 
 
-def build_fat32():
-    """A FAT32 volume holding one file in its root directory."""
+def build_fat32(files):
+    """A FAT32 volume holding `files`, a list of (8.3 name, contents)."""
     volume = bytearray(PARTITION_SECTORS * SECTOR_BYTES)
 
     put_u16(volume, 11, SECTOR_BYTES)
@@ -77,11 +80,6 @@ def build_fat32():
     if (clusters + 2) * 4 > SECTORS_PER_FAT * SECTOR_BYTES:
         raise ValueError("SECTORS_PER_FAT is too small for the cluster count")
 
-    file_clusters = (len(PAYLOAD) + SECTOR_BYTES * SECTORS_PER_CLUSTER - 1) // (
-        SECTOR_BYTES * SECTORS_PER_CLUSTER)
-    if FIRST_FILE_CLUSTER + file_clusters > clusters:
-        raise ValueError("the payload does not fit in the partition")
-
     def set_fat(cluster, value):
         for index in range(FAT_COUNT):
             base = (RESERVED_SECTORS + index * SECTORS_PER_FAT) * SECTOR_BYTES
@@ -93,27 +91,42 @@ def build_fat32():
     set_fat(1, FAT_ENTRY_END)
     set_fat(ROOT_CLUSTER, FAT_ENTRY_END)
 
-    for index in range(file_clusters):
-        cluster = FIRST_FILE_CLUSTER + index
-        last = index == file_clusters - 1
-        set_fat(cluster, FAT_ENTRY_END if last else cluster + 1)
-
     def cluster_offset(cluster):
         sector = data_start + (cluster - 2) * SECTORS_PER_CLUSTER
         return sector * SECTOR_BYTES
 
-    payload_at = cluster_offset(FIRST_FILE_CLUSTER)
-    volume[payload_at:payload_at + len(PAYLOAD)] = PAYLOAD
-
-    entry = bytearray(DIRECTORY_ENTRY_BYTES)
-    entry[0:11] = PAYLOAD_NAME
-    entry[11] = ATTRIBUTE_ARCHIVE
-    put_u16(entry, 20, FIRST_FILE_CLUSTER >> 16)
-    put_u16(entry, 26, FIRST_FILE_CLUSTER & 0xFFFF)
-    put_u32(entry, 28, len(PAYLOAD))
-
+    cluster_bytes = SECTOR_BYTES * SECTORS_PER_CLUSTER
     root_at = cluster_offset(ROOT_CLUSTER)
-    volume[root_at:root_at + DIRECTORY_ENTRY_BYTES] = entry
+    next_cluster = FIRST_FILE_CLUSTER
+
+    for slot, (name, contents) in enumerate(files):
+        if (slot + 1) * DIRECTORY_ENTRY_BYTES > cluster_bytes:
+            raise ValueError("the root directory holds one cluster of entries")
+
+        needed = max(1, (len(contents) + cluster_bytes - 1) // cluster_bytes)
+        if next_cluster + needed > clusters:
+            raise ValueError(f"{name!r} does not fit in the partition")
+
+        first = next_cluster
+        for index in range(needed):
+            cluster = first + index
+            last = index == needed - 1
+            set_fat(cluster, FAT_ENTRY_END if last else cluster + 1)
+            at = cluster_offset(cluster)
+            piece = contents[index * cluster_bytes:(index + 1) * cluster_bytes]
+            volume[at:at + len(piece)] = piece
+        next_cluster += needed
+
+        entry = bytearray(DIRECTORY_ENTRY_BYTES)
+        entry[0:11] = name
+        entry[11] = ATTRIBUTE_ARCHIVE
+        put_u16(entry, 20, first >> 16)
+        put_u16(entry, 26, first & 0xFFFF)
+        put_u32(entry, 28, len(contents))
+
+        at = root_at + slot * DIRECTORY_ENTRY_BYTES
+        volume[at:at + DIRECTORY_ENTRY_BYTES] = entry
+
     return volume
 
 
@@ -126,11 +139,13 @@ def write_partition_entry(boot_record):
 
 
 def main():
-    if len(sys.argv) != 4:
-        print("usage: make-image.py <image> <stage1> <stage2>", file=sys.stderr)
+    if len(sys.argv) != 5:
+        print("usage: make-image.py <image> <stage1> <stage2> <kernel>",
+              file=sys.stderr)
         return 2
 
-    image, stage1, stage2 = (pathlib.Path(argument) for argument in sys.argv[1:])
+    image, stage1, stage2, kernel = (
+        pathlib.Path(argument) for argument in sys.argv[1:])
     boot_record = bytearray(stage1.read_bytes())
     loader = stage2.read_bytes()
 
@@ -161,7 +176,10 @@ def main():
     contents = bytearray(PARTITION_START_LBA * SECTOR_BYTES)
     contents[0:SECTOR_BYTES] = boot_record
     contents[SECTOR_BYTES:SECTOR_BYTES + len(loader)] = loader
-    contents += build_fat32()
+    contents += build_fat32([
+        (PAYLOAD_NAME, PAYLOAD),
+        (KERNEL_NAME, kernel.read_bytes()),
+    ])
 
     image.write_bytes(bytes(contents))
     return 0

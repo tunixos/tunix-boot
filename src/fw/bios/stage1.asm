@@ -24,7 +24,7 @@ INT_VIDEO             equ 0x10
 VIDEO_TELETYPE        equ 0x0E
 
 %ifndef STAGE2_SECTORS
-%define STAGE2_SECTORS 64
+%define STAGE2_SECTORS 120
 %endif
 
 start:
