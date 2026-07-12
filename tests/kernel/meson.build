@@ -13,8 +13,9 @@ test_kernel = custom_target(
   output: 'kernel.elf',
   command: [
     find_program('ld'), '-nostdlib', '-static', '-no-pie',
-    '-Ttext', '0x200000', '-e', '_start',
-    '-z', 'noexecstack', '--build-id=none',
+    '-T', meson.current_source_dir() / 'kernel.ld',
+    '--build-id=none', '-z', 'noexecstack', '--no-warn-rwx-segments',
     '@INPUT@', '-o', '@OUTPUT@',
   ],
+  depend_files: files('kernel.ld'),
 )
