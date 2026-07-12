@@ -7,6 +7,7 @@ util_sources = files(
 memory_sources = files(
   'memory/arena.c',
   'memory/map.c',
+  'memory/paging.c',
 )
 
 block_sources = files(
