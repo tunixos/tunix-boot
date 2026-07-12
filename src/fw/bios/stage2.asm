@@ -224,7 +224,10 @@ long_mode_entry:
     hlt
     jmp .halt
 
-section .data
+; Kept in .stage2entry rather than .data. Real-mode code reaches these with a
+; 16-bit displacement, and as the core grew .data moved past 64 KiB, where that
+; displacement cannot reach — which the linker reports as a truncated
+; relocation rather than anything about addressing modes.
 align 16
 ; Built here rather than by cpu/gdt.c because the table has to exist before any
 ; C runs; gdt_build() produces the same descriptors for everything afterwards.
