@@ -30,10 +30,54 @@ _start:
 
     mov rsi, clean_message
     call write
-    jmp .halt
+    jmp .protocol
 
 .dirty:
     mov rsi, dirty_message
+    call write
+
+    ; Everything below came from the loader through the boot protocol. A null
+    ; response means the loader never answered, which is worth saying out loud.
+.protocol:
+    mov rax, [loader_info_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .missing
+
+    mov rsi, loaded_by
+    call write
+    mov rsi, [rax + RESPONSE_LOADER_NAME]
+    call write
+    mov rsi, space
+    call write
+    mov rsi, [rax + RESPONSE_LOADER_VERSION]
+    call write
+    mov rsi, newline
+    call write
+
+    mov rax, [command_line_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .missing
+
+    mov rsi, cmdline_label
+    call write
+    mov rsi, [rax + RESPONSE_COMMAND_LINE]
+    call write
+    mov rsi, newline
+    call write
+
+    mov rax, [memory_map_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .missing
+    ; A map with no entries describes no memory, which is not a map.
+    cmp qword [rax + RESPONSE_MEMORY_COUNT], 0
+    je .missing
+
+    mov rsi, memory_message
+    call write
+    jmp .halt
+
+.missing:
+    mov rsi, unanswered
     call write
 
 .halt:
@@ -62,10 +106,47 @@ write:
     pop rax
     ret
 
+; What this kernel asks the loader for. The loader finds these by scanning the
+; image for the magic pair, so they need no fixed address and no header — a
+; kernel asks for what it understands and nothing else.
+SECTION .data
+ALIGN 8
+
+REQUEST_MAGIC_LOW    equ 0x5449554e49582d31
+REQUEST_MAGIC_HIGH   equ 0x424f4f54503a3031
+REQUEST_MEMORY_MAP   equ 1
+REQUEST_COMMAND_LINE equ 3
+REQUEST_LOADER_INFO  equ 4
+
+; Offsets into the responses, which are what the ABI actually promises.
+RESPONSE_MEMORY_COUNT   equ 8
+RESPONSE_COMMAND_LINE   equ 8
+RESPONSE_LOADER_NAME    equ 8
+RESPONSE_LOADER_VERSION equ 16
+REQUEST_RESPONSE        equ 32
+
+memory_map_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_MEMORY_MAP, 0, 0
+
+command_line_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_COMMAND_LINE, 0, 0
+
+loader_info_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_LOADER_INFO, 0, 0
+
 SECTION .rodata
-message:       db "kernel running", 10, 0
-clean_message: db "kernel bss was zeroed", 10, 0
-dirty_message: db "kernel bss was NOT zeroed", 10, 0
+message:        db "kernel running", 10, 0
+clean_message:  db "kernel bss was zeroed", 10, 0
+dirty_message:  db "kernel bss was NOT zeroed", 10, 0
+loaded_by:      db "loaded by ", 0
+space:          db " ", 0
+cmdline_label:  db "cmdline: ", 0
+memory_message: db "memory map received", 10, 0
+newline:        db 10, 0
+unanswered:     db "a request went unanswered", 10, 0
 
 SECTION .bss
 zero_check: resq 1
