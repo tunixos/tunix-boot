@@ -16,6 +16,7 @@ unit_tests = [
   ['elf', 'test_elf.c'],
   ['paging', 'test_paging.c'],
   ['config', 'test_config.c'],
+  ['protocol', 'test_protocol.c'],
 ]
 
 foreach entry : unit_tests
