@@ -16,6 +16,10 @@ block_sources = files(
   'block/partition.c',
 )
 
+protocol_sources = files(
+  'protocol/protocol.c',
+)
+
 config_sources = files(
   'config/config.c',
 )
@@ -45,7 +49,7 @@ fw_sources = files(
 
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources,
+  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources + protocol_sources,
   include_directories: include_directories_root,
 )
 
