@@ -70,4 +70,21 @@ require "the kernel page tables were not installed" \
 require "the kernel did not run" "^kernel running$"
 require "the kernel found its bss dirty" "^kernel bss was zeroed$"
 
+# The loader claims the memory it is using, so the map the kernel is handed
+# describes the machine as it is now rather than as the firmware found it.
+require "the loader did not claim its own memory" \
+    "after claiming: [0-9]* MiB usable"
+require "the kernel's requests were not answered" "answered 3 kernel requests"
+
+# Printed by the kernel out of the responses it was given, so each line is a
+# round trip: the kernel declared a request, the loader found it by scanning the
+# image, and the pointer it wrote back was readable from the kernel's own map.
+require "the kernel was not told who loaded it" "^loaded by tunix-boot "
+require "the kernel did not get its command line" \
+    "^cmdline: root=/dev/sda1 quiet$"
+require "the kernel did not get a memory map" "^memory map received$"
+if printf '%s' "$output" | grep -q "a request went unanswered"; then
+    fail "the kernel found one of its responses null"
+fi
+
 exit 0

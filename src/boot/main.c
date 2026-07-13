@@ -7,6 +7,7 @@
 #include "log/log.h"
 #include "memory/arena.h"
 #include "memory/paging.h"
+#include "protocol/protocol.h"
 
 #define LOADER_ARENA_BYTES (1024ULL * 1024ULL)
 #define LOADER_ARENA_ALIGNMENT (4096ULL)
@@ -56,6 +57,11 @@ static struct elf_image kernel_image;
    identity map stage2 built has to be reproduced in the kernel's tables. */
 #define IDENTITY_MAP_BYTES LOADER_ADDRESS_LIMIT
 
+/* Until there is a config file to read one from. */
+#define KERNEL_COMMAND_LINE "root=/dev/sda1 quiet"
+
+static uint64_t arena_base;
+
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
              features->vendor,
@@ -92,6 +98,7 @@ static bool place_arena(const struct memory_map *map, struct arena *arena) {
     if (base + LOADER_ARENA_BYTES > LOADER_ADDRESS_LIMIT) return false;
 
     arena_init(arena, (void *)(uintptr_t)base, LOADER_ARENA_BYTES);
+    arena_base = base;
     LOG_INFO("arena at %x, %u KiB", base, LOADER_ARENA_BYTES / 1024ULL);
     return true;
 }
@@ -264,6 +271,45 @@ static bool build_kernel_tables(const struct elf_image *kernel,
     return true;
 }
 
+/* The firmware map describes the machine, not what the loader has since done to
+   it. Adding these makes the map the kernel is handed the truth: the more
+   restrictive kind wins where they overlap usable memory, so the carve-out
+   happens on its own. */
+static void claim_loader_memory(const struct elf_image *kernel) {
+    memory_map_add(&memory, arena_base, LOADER_ARENA_BYTES,
+                   MEMORY_KIND_BOOTLOADER_RECLAIMABLE);
+    memory_map_add(&memory, kernel->lowest_address,
+                   kernel->highest_address - kernel->lowest_address,
+                   MEMORY_KIND_KERNEL);
+    memory_map_finalize(&memory);
+
+    LOG_INFO("after claiming: %u MiB usable in %u regions",
+             memory_map_total(&memory, MEMORY_KIND_USABLE) / BYTES_PER_MIB,
+             (uint64_t)memory.count);
+}
+
+/* Answers are written into the kernel's image, which is only reachable while
+   the loader is still identity mapped — so this happens before the switch. */
+static bool answer_kernel_requests(const struct elf_image *kernel) {
+    struct boot_facts facts = {
+        .memory = &memory,
+        .kernel_physical_base = kernel->lowest_address,
+        .kernel_virtual_base = kernel->segments[0].virtual_address,
+        .command_line = KERNEL_COMMAND_LINE,
+    };
+
+    int answered = protocol_answer(
+        (void *)(uintptr_t)kernel->lowest_address,
+        kernel->highest_address - kernel->lowest_address, &facts, &loader_arena);
+
+    if (answered < 0) {
+        LOG_ERROR("could not answer the kernel's requests");
+        return false;
+    }
+    LOG_INFO("answered %u kernel requests", (uint64_t)answered);
+    return true;
+}
+
 void boot_core(const struct fw_ops *fw) {
     LOG_INFO("tunix-boot on %s firmware", fw_name(fw));
 
@@ -299,6 +345,10 @@ void boot_core(const struct fw_ops *fw) {
 
     uint64_t entry;
     if (!load_kernel(&entry)) return;
+
+    claim_loader_memory(&kernel_image);
+    if (!answer_kernel_requests(&kernel_image)) return;
+
     if (!build_kernel_tables(&kernel_image, &features)) return;
 
     /* From here the kernel's map is the one in force. The loader survives it
