@@ -40,10 +40,18 @@ FAT_ENTRY_END = 0x0FFFFFFF
 DIRECTORY_ENTRY_BYTES = 32
 ATTRIBUTE_ARCHIVE = 0x20
 
-# Read back by the loader, which checks these exact bytes. Changing the text
-# means changing tests/qemu/boot-test.sh with it.
-PAYLOAD_NAME = b"TUNIX   CFG"
-PAYLOAD = b"tunix-boot filesystem check\n"
+# The configuration the loader reads to decide what to boot. Parsed for real, so
+# the kernel path and command line below are what actually reach the kernel;
+# tests/qemu/boot-test.sh checks the command line comes back out of it.
+CONFIG_NAME = b"TUNIX   CFG"
+CONFIG = b"""# what to boot
+timeout = 5
+default = tunix
+
+:tunix
+kernel = /kernel.elf
+cmdline = root=/dev/sda1 quiet
+"""
 KERNEL_NAME = b"KERNEL  ELF"
 
 
@@ -177,7 +185,7 @@ def main():
     contents[0:SECTOR_BYTES] = boot_record
     contents[SECTOR_BYTES:SECTOR_BYTES + len(loader)] = loader
     contents += build_fat32([
-        (PAYLOAD_NAME, PAYLOAD),
+        (CONFIG_NAME, CONFIG),
         (KERNEL_NAME, kernel.read_bytes()),
     ])
 
