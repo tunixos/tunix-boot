@@ -1,6 +1,7 @@
 #include "block/ata.h"
 #include "block/partition.h"
 #include "boot/core.h"
+#include "config/config.h"
 #include "cpu/cpuid.h"
 #include "elf/elf.h"
 #include "fs/fat.h"
@@ -37,11 +38,19 @@ static struct partition_view boot_view;
 static struct block_device boot_partition;
 static struct fat_volume boot_volume;
 
-/* The file the image carries, read back to prove the whole path works. */
-#define PROBE_PATH "/tunix.cfg"
-#define PROBE_BYTES 64U
+#define CONFIG_PATH "/tunix.cfg"
+/* Read whole into memory: it is small, it is parsed in place, and every value
+   the parser produces points back into this buffer. */
+#define CONFIG_BUFFER_BYTES 4096U
+#define KERNEL_PATH_BYTES 256U
+#define COMMAND_LINE_BYTES 512U
 
-#define KERNEL_PATH "/kernel.elf"
+static char config_text[CONFIG_BUFFER_BYTES];
+static struct config config;
+/* The parser hands back slices of config_text, and both of these have to be
+   terminated: one to open a file with, one to hand the kernel. */
+static char kernel_path[KERNEL_PATH_BYTES];
+static char command_line[COMMAND_LINE_BYTES];
 
 /* The kernel is loaded where it asked to be, and the only memory it may land in
    is memory the firmware called usable and the identity map covers. */
@@ -56,9 +65,6 @@ static struct elf_image kernel_image;
    and the memory it just loaded the kernel into all live down here — so the
    identity map stage2 built has to be reproduced in the kernel's tables. */
 #define IDENTITY_MAP_BYTES LOADER_ADDRESS_LIMIT
-
-/* Until there is a config file to read one from. */
-#define KERNEL_COMMAND_LINE "root=/dev/sda1 quiet"
 
 static uint64_t arena_base;
 
@@ -154,26 +160,47 @@ static bool mount_boot_filesystem(void) {
     return false;
 }
 
-static bool read_probe_file(void) {
+static bool read_configuration(void) {
     struct fat_file file;
-    if (!fat_open(&boot_volume, PROBE_PATH, &file)) {
-        LOG_ERROR("%s is not on the filesystem", PROBE_PATH);
+    if (!fat_open(&boot_volume, CONFIG_PATH, &file)) {
+        LOG_ERROR("%s is not on the filesystem", CONFIG_PATH);
         return false;
     }
-    if (file.size == 0 || file.size > PROBE_BYTES) {
-        LOG_ERROR("%s is not the size it should be", PROBE_PATH);
+    if (file.size == 0 || file.size > sizeof config_text) {
+        LOG_ERROR("%s is not a size a configuration should be", CONFIG_PATH);
+        return false;
+    }
+    if (!fat_read(&file, 0, file.size, config_text)) {
+        LOG_ERROR("%s would not read", CONFIG_PATH);
         return false;
     }
 
-    uint8_t contents[PROBE_BYTES];
-    if (!fat_read(&file, 0, file.size, contents)) {
-        LOG_ERROR("%s would not read", PROBE_PATH);
+    struct config_error error;
+    if (!config_parse(config_text, file.size, &config, &error)) {
+        /* The line and the reason, because a machine that will not boot over a
+           typo should say which typo. */
+        LOG_ERROR("%s line %u: %s", CONFIG_PATH, error.line, error.reason);
         return false;
     }
 
-    contents[file.size - 1U] = '\0';
-    LOG_INFO("read %u bytes from %s: %s", (uint64_t)file.size, PROBE_PATH,
-             (const char *)contents);
+    const struct config_entry *entry = config_default_entry(&config);
+    if (!entry) {
+        LOG_ERROR("%s names no entry to boot", CONFIG_PATH);
+        return false;
+    }
+
+    if (!str_copy_cstr(entry->kernel, kernel_path, sizeof kernel_path)) {
+        LOG_ERROR("the kernel path is longer than this loader can hold");
+        return false;
+    }
+    if (!str_copy_cstr(entry->cmdline, command_line, sizeof command_line)) {
+        LOG_ERROR("the command line is longer than this loader can hold");
+        return false;
+    }
+
+    LOG_INFO("config: %u entries, timeout %u, booting %s",
+             (uint64_t)config.entry_count, config.timeout_seconds, kernel_path);
+    LOG_INFO("cmdline from config: %s", command_line);
     return true;
 }
 
@@ -187,13 +214,13 @@ static bool kernel_read(void *context, uint64_t offset, size_t length,
    the loader sits below a megabyte and the window starts at one, so a segment
    that would reach it is refused by elf_load before anything moves. */
 static bool load_kernel(uint64_t *entry) {
-    if (!fat_open(&boot_volume, KERNEL_PATH, &kernel_file)) {
-        LOG_ERROR("%s is not on the filesystem", KERNEL_PATH);
+    if (!fat_open(&boot_volume, kernel_path, &kernel_file)) {
+        LOG_ERROR("%s is not on the filesystem", kernel_path);
         return false;
     }
 
     if (!elf_parse(kernel_read, &kernel_file, &kernel_image)) {
-        LOG_ERROR("%s is not an elf64 kernel this loader can run", KERNEL_PATH);
+        LOG_ERROR("%s is not an elf64 kernel this loader can run", kernel_path);
         return false;
     }
     LOG_INFO("kernel %u segments, %x..%x, entry %x",
@@ -295,7 +322,7 @@ static bool answer_kernel_requests(const struct elf_image *kernel) {
         .memory = &memory,
         .kernel_physical_base = kernel->lowest_address,
         .kernel_virtual_base = kernel->segments[0].virtual_address,
-        .command_line = KERNEL_COMMAND_LINE,
+        .command_line = command_line,
     };
 
     int answered = protocol_answer(
@@ -339,7 +366,7 @@ void boot_core(const struct fw_ops *fw) {
     }
 
     if (!mount_boot_filesystem()) return;
-    if (!read_probe_file()) return;
+    if (!read_configuration()) return;
 
     LOG_INFO("stage2 reached the core");
 
