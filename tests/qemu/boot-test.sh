@@ -53,8 +53,10 @@ require "the boot record did not read back" \
 # pass unless every layer beneath it addressed the disk correctly.
 require "the partition table was not read" "[1-9][0-9]* partitions, mbr table"
 require "the filesystem did not mount" "fat32 at lba 2048, [1-9][0-9]* clusters"
-require "the file did not read back with the contents it was written with" \
-    "read 28 bytes from /tunix.cfg: tunix-boot filesystem check"
+require "the configuration was not read and parsed" \
+    "config: 1 entries, timeout 5, booting /kernel.elf"
+require "the command line did not come out of the configuration" \
+    "cmdline from config: root=/dev/sda1 quiet"
 
 # The kernel is built by the real toolchain and entered for real. These last two
 # lines are printed by the kernel itself, so nothing but a working loader can
