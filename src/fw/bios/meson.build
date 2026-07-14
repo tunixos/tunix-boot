@@ -55,6 +55,9 @@ bios_image = custom_target(
     python, meson.project_source_root() / 'tools' / 'make-image.py',
     '@OUTPUT@', '@INPUT0@', '@INPUT1@', '@INPUT2@',
   ],
+  # The script decides the partition layout and carries the configuration the
+  # loader reads, so editing it changes the image. Without this, it does not.
+  depend_files: files(meson.project_source_root() / 'tools' / 'make-image.py'),
   build_by_default: true,
 )
 
