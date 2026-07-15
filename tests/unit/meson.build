@@ -17,6 +17,7 @@ unit_tests = [
   ['paging', 'test_paging.c'],
   ['config', 'test_config.c'],
   ['protocol', 'test_protocol.c'],
+  ['uefi-memory', 'test_uefi_memory.c'],
 ]
 
 foreach entry : unit_tests
