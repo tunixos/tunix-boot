@@ -13,13 +13,15 @@
 #define LOADER_ARENA_BYTES (1024ULL * 1024ULL)
 #define LOADER_ARENA_ALIGNMENT (4096ULL)
 
-/* Everything below a megabyte belongs to something already — the boot record,
-   our stack, the page tables, the buffer stage2 left the memory map in — and
-   none of that is described by the firmware map. */
+/* Everything below a megabyte belongs to something already. Under BIOS that is
+   the boot record, our stack, the page tables and the buffer stage2 left the
+   memory map in; under UEFI it is whatever the firmware kept there. Neither is
+   fully described by the map. */
 #define LOADER_ARENA_FLOOR (1024ULL * 1024ULL)
 
-/* The loader may only touch what it has mapped, and both backends bring up an
-   identity map of the first four gigabytes and no more. */
+/* The loader may only touch what is mapped, and the first four gigabytes are
+   what both paths arrive with: stage2 builds that map, and firmware provides
+   one at least that large. */
 #define LOADER_ADDRESS_LIMIT (4ULL * 1024ULL * 1024ULL * 1024ULL)
 
 #define BYTES_PER_MIB (1024ULL * 1024ULL)
@@ -63,7 +65,7 @@ static struct elf_image kernel_image;
 
 /* The loader keeps running after the switch — its own code, stack, page tables
    and the memory it just loaded the kernel into all live down here — so the
-   identity map stage2 built has to be reproduced in the kernel's tables. */
+   identity map it arrived on has to be reproduced in the kernel's tables. */
 #define IDENTITY_MAP_BYTES LOADER_ADDRESS_LIMIT
 
 static uint64_t arena_base;
@@ -368,7 +370,7 @@ void boot_core(const struct fw_ops *fw) {
     if (!mount_boot_filesystem()) return;
     if (!read_configuration()) return;
 
-    LOG_INFO("stage2 reached the core");
+    LOG_INFO("the machine is described and readable");
 
     uint64_t entry;
     if (!load_kernel(&entry)) return;

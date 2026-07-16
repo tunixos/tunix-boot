@@ -27,7 +27,7 @@ require() {
     printf '%s' "$output" | grep -q "$2" || fail "$1"
 }
 
-require "the core never reached long mode" "stage2 reached the core"
+require "the core never reached long mode" "the machine is described and readable"
 require "long mode was not detected" "long mode yes"
 
 # Nothing below this point can pass unless stage2 ran the E820 loop in real mode
