@@ -10,7 +10,10 @@ static bool is_space(char value) {
 }
 
 static char lower(char value) {
-    return (value >= 'A' && value <= 'Z') ? (char)(value | CASE_BIT) : value;
+    if (value < 'A' || value > 'Z') return value;
+    /* Through unsigned char: plain char is signed here, and letting it promote
+       into the unsigned arithmetic below is a conversion, not a cast. */
+    return (char)((unsigned char)value | CASE_BIT);
 }
 
 static bool digit_value(char value, uint64_t base, uint64_t *out) {

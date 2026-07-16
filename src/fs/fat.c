@@ -345,10 +345,10 @@ static bool find_in_directory(struct fat_volume *volume, uint32_t cluster,
 
         out->volume = volume;
         out->first_cluster = (high << 16) | low;
-        out->size = (uint32_t)(entry[FAT_ENTRY_SIZE_OFFSET] |
-                               (entry[FAT_ENTRY_SIZE_OFFSET + 1U] << 8) |
-                               (entry[FAT_ENTRY_SIZE_OFFSET + 2U] << 16) |
-                               ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 3U] << 24));
+        out->size = (uint32_t)entry[FAT_ENTRY_SIZE_OFFSET] |
+                    ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 1U] << 8) |
+                    ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 2U] << 16) |
+                    ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 3U] << 24);
         out->directory = (attributes & FAT_ATTRIBUTE_DIRECTORY) != 0;
         return true;
     }

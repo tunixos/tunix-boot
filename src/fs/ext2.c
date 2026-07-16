@@ -263,9 +263,8 @@ static bool find_in_directory(struct ext2_volume *volume,
         if (!read_blocks(volume, directory->blocks, offset,
                          EXT2_DIRENT_MIN_BYTES, entry)) return false;
 
-        uint32_t inode = (uint32_t)(entry[0] | (entry[1] << 8) |
-                                    (entry[2] << 16) |
-                                    ((uint32_t)entry[3] << 24));
+        uint32_t inode = (uint32_t)entry[0] | ((uint32_t)entry[1] << 8) |
+                         ((uint32_t)entry[2] << 16) | ((uint32_t)entry[3] << 24);
         uint16_t record = (uint16_t)(entry[EXT2_DIRENT_RECORD_LENGTH_OFFSET] |
                                      (entry[EXT2_DIRENT_RECORD_LENGTH_OFFSET + 1U] << 8));
         uint8_t name_length = entry[EXT2_DIRENT_NAME_LENGTH_OFFSET];
