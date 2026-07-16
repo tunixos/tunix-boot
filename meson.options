@@ -5,3 +5,12 @@ option('log_level', type: 'combo',
        description: 'Highest log level compiled in')
 option('serial_port', type: 'integer', min: 0, max: 65535, value: 1016,
        description: 'I/O port of the debug serial line (0x3f8)')
+
+option(
+  'firmware',
+  type: 'combo',
+  choices: ['bios', 'uefi'],
+  value: 'bios',
+  description: 'Which firmware the loader is built against. The two produce ' +
+               'separate artefacts and share everything above struct fw_ops.',
+)

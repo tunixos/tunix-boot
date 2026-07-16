@@ -60,5 +60,9 @@ util_dependency = declare_dependency(
 )
 
 if not building_for_host
-  subdir('fw/bios')
+  if get_option('firmware') == 'bios'
+    subdir('fw/bios')
+  else
+    subdir('fw/uefi')
+  endif
 endif

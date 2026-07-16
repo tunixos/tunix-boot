@@ -1,10 +1,17 @@
-# UEFI applications are PE32+ and position independent; the firmware has already
-# put us in long mode with paging on.
+# UEFI applications are PE32+, and the firmware has already put us in long mode
+# with paging on, so there is no stage here to bring the machine up.
+#
+# clang targeting Windows is what produces COFF objects, and lld-link is what
+# links them into an EFI application. gcc cannot: binutils dropped the
+# efi-app-x86_64 objcopy target, and plain pei-x86-64 writes a PE header the
+# firmware will not load.
+#
+# With this target the Microsoft calling convention is already the default,
+# which is the one the firmware's own function pointers use.
 [binaries]
-c = 'x86_64-elf-gcc'
-ar = 'x86_64-elf-ar'
-strip = 'x86_64-elf-strip'
-objcopy = 'x86_64-elf-objcopy'
+c = 'clang'
+ar = 'llvm-ar'
+strip = 'llvm-strip'
 
 [host_machine]
 system = 'none'
@@ -13,5 +20,8 @@ cpu = 'x86_64'
 endian = 'little'
 
 [built-in options]
-c_args = ['-fPIC', '-DTUNIX_BOOT_UEFI=1']
-c_link_args = ['-nostdlib', '-shared', '-Wl,-Bsymbolic', '-Wl,--build-id=none']
+# meson adds -fPIC to static libraries by default, and a Windows target has no
+# such thing.
+b_staticpic = false
+c_args = ['--target=x86_64-unknown-windows', '-ffreestanding', '-fshort-wchar', '-mno-red-zone', '-mno-stack-arg-probe', '-DTUNIX_BOOT_UEFI=1']
+c_link_args = ['--target=x86_64-unknown-windows', '-nostdlib', '-fuse-ld=lld-link', '-Wl,-subsystem:efi_application', '-Wl,-entry:efi_main']
