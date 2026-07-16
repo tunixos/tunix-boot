@@ -147,34 +147,42 @@ def write_partition_entry(boot_record):
 
 
 def main():
-    if len(sys.argv) != 5:
-        print("usage: make-image.py <image> <stage1> <stage2> <kernel>",
+    # Under UEFI there is no boot record to lay down and no stage2 to load: the
+    # firmware loads the application itself, and all this image has to carry is
+    # the partition the loader then reads. The rest of it is identical, which is
+    # the point — one script, and the same filesystem either way.
+    if len(sys.argv) == 3:
+        image, kernel = (pathlib.Path(argument) for argument in sys.argv[1:])
+        boot_record = bytearray(SECTOR_BYTES)
+        put_u16(boot_record, SIGNATURE_OFFSET, SIGNATURE)
+        loader = b""
+    elif len(sys.argv) == 5:
+        image, stage1, stage2, kernel = (
+            pathlib.Path(argument) for argument in sys.argv[1:])
+        boot_record = bytearray(stage1.read_bytes())
+        loader = stage2.read_bytes()
+
+        if len(boot_record) != SECTOR_BYTES:
+            print(f"boot record is {len(boot_record)} bytes, not {SECTOR_BYTES}",
+                  file=sys.stderr)
+            return 1
+        if any(boot_record[TABLE_OFFSET:SIGNATURE_OFFSET]):
+            print("stage1 has grown into the partition table", file=sys.stderr)
+            return 1
+
+        sectors = (len(loader) + SECTOR_BYTES - 1) // SECTOR_BYTES
+        if sectors > STAGE2_MAX_SECTORS:
+            print(f"stage2 needs {sectors} sectors, more than the boot record "
+                  f"reads ({STAGE2_MAX_SECTORS})", file=sys.stderr)
+            return 1
+    else:
+        print("usage: make-image.py <image> [<stage1> <stage2>] <kernel>",
               file=sys.stderr)
         return 2
 
-    image, stage1, stage2, kernel = (
-        pathlib.Path(argument) for argument in sys.argv[1:])
-    boot_record = bytearray(stage1.read_bytes())
-    loader = stage2.read_bytes()
-
-    if len(boot_record) != SECTOR_BYTES:
-        print(f"boot record is {len(boot_record)} bytes, not {SECTOR_BYTES}",
-              file=sys.stderr)
-        return 1
-
-    if any(boot_record[TABLE_OFFSET:SIGNATURE_OFFSET]):
-        print("stage1 has grown into the partition table", file=sys.stderr)
-        return 1
     write_partition_entry(boot_record)
 
-    sectors = (len(loader) + SECTOR_BYTES - 1) // SECTOR_BYTES
-    if sectors > STAGE2_MAX_SECTORS:
-        print(f"stage2 needs {sectors} sectors, more than the boot record reads "
-              f"({STAGE2_MAX_SECTORS})", file=sys.stderr)
-        return 1
-
-    loader_sectors = BOOT_RECORD_SECTORS + STAGE2_MAX_SECTORS
-    if loader_sectors > PARTITION_START_LBA:
+    if BOOT_RECORD_SECTORS + STAGE2_MAX_SECTORS > PARTITION_START_LBA:
         print("the loader area runs into the partition", file=sys.stderr)
         return 1
 
