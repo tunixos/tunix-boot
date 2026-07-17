@@ -10,6 +10,7 @@
 # which is the one the firmware's own function pointers use.
 [binaries]
 c = 'clang'
+c_ld = 'lld-link'
 ar = 'llvm-ar'
 strip = 'llvm-strip'
 
@@ -26,7 +27,5 @@ endian = 'little'
 # such thing. The other two are GNU ld flags it passes unasked; lld-link warns
 # about each one, and lld-link refuses undefined symbols on its own anyway.
 b_staticpic = false
-b_asneeded = false
-b_lundef = false
 c_args = ['--target=x86_64-unknown-windows', '-ffreestanding', '-fshort-wchar', '-mno-red-zone', '-mno-stack-arg-probe', '-DTUNIX_BOOT_UEFI=1']
-c_link_args = ['--target=x86_64-unknown-windows', '-nostdlib', '-fuse-ld=lld-link', '-Wl,-subsystem:efi_application', '-Wl,-entry:efi_main']
+c_link_args = ['--target=x86_64-unknown-windows', '-nostdlib']

@@ -12,11 +12,29 @@ uefi_sources = files(
   '../../block/ata_port.c',
 )
 
-uefi_application = executable(
-  'BOOTX64',
+uefi_backend = static_library(
+  'tunix-boot-uefi',
   uefi_sources,
   dependencies: util_dependency,
-  name_suffix: 'EFI',
+)
+
+# Linked by hand rather than with executable(), because meson insists on
+# passing GNU ld flags — --as-needed, --no-undefined, --allow-shlib-undefined —
+# that lld-link warns about one at a time whichever way its options are set.
+# An EFI application wants none of them, and this way nothing arrives unasked.
+uefi_application = custom_target(
+  'BOOTX64.EFI',
+  input: [uefi_backend, core_library],
+  output: 'BOOTX64.EFI',
+  command: [
+    find_program('lld-link'),
+    '-machine:x64',
+    '-subsystem:efi_application',
+    '-entry:efi_main',
+    '-nodefaultlib',
+    '@INPUT@',
+    '-out:@OUTPUT@',
+  ],
   build_by_default: true,
 )
 
