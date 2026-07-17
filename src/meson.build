@@ -16,6 +16,14 @@ block_sources = files(
   'block/partition.c',
 )
 
+terminal_sources = files(
+  'terminal/terminal.c',
+)
+
+video_sources = files(
+  'video/framebuffer.c',
+)
+
 protocol_sources = files(
   'protocol/protocol.c',
 )
@@ -50,7 +58,7 @@ fw_sources = files(
 
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources + protocol_sources,
+  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources + protocol_sources + video_sources + terminal_sources,
   include_directories: include_directories_root,
 )
 
