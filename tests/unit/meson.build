@@ -18,6 +18,8 @@ unit_tests = [
   ['config', 'test_config.c'],
   ['protocol', 'test_protocol.c'],
   ['uefi-memory', 'test_uefi_memory.c'],
+  ['framebuffer', 'test_framebuffer.c'],
+  ['terminal', 'test_terminal.c'],
 ]
 
 foreach entry : unit_tests
