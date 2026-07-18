@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "memory/map.h"
+#include "video/framebuffer.h"
 
 /*
  * The seam between the loader and the firmware under it.
@@ -38,6 +39,12 @@ struct fw_ops {
                        void *out);
 
     void (*console_write)(const struct fw_ops *fw, const char *text);
+
+    /* The screen, if there is one. Must be called before boot services end —
+       under UEFI the protocol that describes it goes away with them — which is
+       why this is a separate call and not part of the memory snapshot. */
+    bool (*framebuffer_acquire)(const struct fw_ops *fw,
+                                struct framebuffer *out);
 };
 
 /* Call through these rather than the pointers. A backend leaves unimplemented
@@ -47,6 +54,8 @@ bool fw_mem_snapshot(const struct fw_ops *fw, struct memory_map *out);
 bool fw_block_read(const struct fw_ops *fw, uint64_t lba, uint32_t sectors,
                    void *out);
 void fw_console_write(const struct fw_ops *fw, const char *text);
+
+bool fw_framebuffer_acquire(const struct fw_ops *fw, struct framebuffer *out);
 
 const char *fw_name(const struct fw_ops *fw);
 

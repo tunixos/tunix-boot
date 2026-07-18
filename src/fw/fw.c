@@ -24,3 +24,11 @@ const char *fw_name(const struct fw_ops *fw) {
     if (!fw || !fw->name) return FW_NAME_UNKNOWN;
     return fw->name;
 }
+
+bool fw_framebuffer_acquire(const struct fw_ops *fw, struct framebuffer *out) {
+    if (!fw || !fw->framebuffer_acquire || !out) return false;
+    if (!fw->framebuffer_acquire(fw, out)) return false;
+    /* A backend that describes a screen wrongly is worse than one that reports
+       none, so the description is checked here rather than trusted. */
+    return framebuffer_valid(out);
+}

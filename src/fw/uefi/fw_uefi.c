@@ -1,8 +1,12 @@
+#include "fw/uefi/graphics.h"
 #include "fw/uefi/memory.h"
 #include "fw/uefi/uefi.h"
 #include "fw/fw.h"
 
 #define FW_UEFI_NAME "uefi"
+
+static const struct efi_guid graphics_output_guid =
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
 bool uefi_system_table_valid(const struct efi_system_table *table) {
     if (!table) return false;
@@ -68,6 +72,39 @@ static bool uefi_mem_snapshot(const struct fw_ops *fw, struct memory_map *out) {
                              (size_t)descriptor_bytes, phase, out);
 }
 
+static bool uefi_framebuffer_acquire(const struct fw_ops *fw,
+                                     struct framebuffer *out) {
+    struct fw_uefi *self = (struct fw_uefi *)(void *)(uintptr_t)fw;
+    struct efi_boot_services *services = self->system->boot_services;
+
+    /* Only while boot services are up: the protocol is one of the things that
+       goes away with them, which is why this is not part of the snapshot. */
+    if (self->exited || !services->locate_protocol) return false;
+
+    struct efi_graphics_output *graphics = NULL;
+    if (services->locate_protocol(&graphics_output_guid, NULL,
+                                  (void **)&graphics) != EFI_SUCCESS) {
+        return false;
+    }
+    /* A machine with no display is not a failure to boot; it is a machine the
+       loader has nothing to say to except over the serial line. */
+    if (!graphics || !graphics->mode || !graphics->mode->info) return false;
+
+    const struct efi_graphics_mode_information *info = graphics->mode->info;
+    struct uefi_pixel_masks masks = {
+        .red = info->pixel_masks[0],
+        .green = info->pixel_masks[1],
+        .blue = info->pixel_masks[2],
+        .reserved = info->pixel_masks[3],
+    };
+
+    return uefi_graphics_describe(info->pixel_format, &masks,
+                                  info->horizontal_resolution,
+                                  info->vertical_resolution,
+                                  info->pixels_per_scanline,
+                                  graphics->mode->framebuffer_base, out);
+}
+
 /*
  * Leaving boot services. The map has to be re-read immediately beforehand,
  * because ExitBootServices only accepts the key from a map that is still
@@ -109,6 +146,7 @@ const struct fw_ops *fw_uefi_init(efi_handle image,
 
     firmware.ops.name = FW_UEFI_NAME;
     firmware.ops.mem_snapshot = uefi_mem_snapshot;
+    firmware.ops.framebuffer_acquire = uefi_framebuffer_acquire;
     firmware.system = system;
     firmware.image = image;
     firmware.exited = false;

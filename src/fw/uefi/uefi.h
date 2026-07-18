@@ -35,6 +35,8 @@ typedef void *efi_handle;
 #define EFI_ALLOCATE_ANY_PAGES 0U
 #define EFI_LOADER_DATA 2U
 
+struct efi_guid;
+
 struct efi_table_header {
     uint64_t signature;
     uint32_t revision;
@@ -92,6 +94,56 @@ struct efi_boot_services {
     void *unload_image;
 
     efi_status (*exit_boot_services)(efi_handle image, uint64_t map_key);
+
+    void *get_next_monotonic_count;
+    void *stall;
+    void *set_watchdog_timer;
+    void *connect_controller;
+    void *disconnect_controller;
+    void *open_protocol;
+    void *close_protocol;
+    void *open_protocol_information;
+    void *protocols_per_handle;
+    void *locate_handle_buffer;
+
+    efi_status (*locate_protocol)(const struct efi_guid *protocol,
+                                  void *registration, void **interface);
+};
+
+struct efi_guid {
+    uint32_t data1;
+    uint16_t data2;
+    uint16_t data3;
+    uint8_t data4[8];
+};
+
+#define EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID                                     \
+    {0x9042A9DE, 0x23DC, 0x4A38, {0x96, 0xFB, 0x7A, 0xDE, 0xD0, 0x80, 0x51, 0x6A}}
+
+struct efi_graphics_mode_information {
+    uint32_t version;
+    uint32_t horizontal_resolution;
+    uint32_t vertical_resolution;
+    uint32_t pixel_format;
+    /* Red, green, blue, reserved — only meaningful when the format says so. */
+    uint32_t pixel_masks[4];
+    uint32_t pixels_per_scanline;
+};
+
+struct efi_graphics_mode {
+    uint32_t max_mode;
+    uint32_t mode;
+    struct efi_graphics_mode_information *info;
+    uint64_t info_bytes;
+    uint64_t framebuffer_base;
+    uint64_t framebuffer_bytes;
+};
+
+struct efi_graphics_output {
+    void *query_mode;
+    void *set_mode;
+    void *blt;
+    struct efi_graphics_mode *mode;
 };
 
 struct efi_system_table {
