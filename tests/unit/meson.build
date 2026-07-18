@@ -20,6 +20,7 @@ unit_tests = [
   ['uefi-memory', 'test_uefi_memory.c'],
   ['framebuffer', 'test_framebuffer.c'],
   ['terminal', 'test_terminal.c'],
+  ['uefi-graphics', 'test_uefi_graphics.c'],
 ]
 
 foreach entry : unit_tests
