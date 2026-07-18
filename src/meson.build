@@ -54,6 +54,7 @@ fw_sources = files(
   'fw/fw.c',
   'fw/bios/e820.c',
   'fw/uefi/memory.c',
+  'fw/uefi/graphics.c',
 )
 
 core_library = static_library(
