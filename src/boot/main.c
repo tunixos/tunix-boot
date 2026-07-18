@@ -69,6 +69,86 @@ static struct elf_image kernel_image;
 #define IDENTITY_MAP_BYTES LOADER_ADDRESS_LIMIT
 
 static uint64_t arena_base;
+static struct framebuffer screen;
+static bool screen_present;
+
+/* Enough to tell, from across a room, that the loader reached this point and
+   that the mode it was told about is the mode it is drawing on: a border in
+   each primary, and a bar that would be torn or sheared if the pitch or the
+   channel layout were wrong. */
+#define SCREEN_BORDER_PIXELS 8U
+#define SCREEN_BAR_PIXELS 32U
+
+static void paint_screen(void) {
+    uint32_t width = screen.width;
+    uint32_t height = screen.height;
+
+    framebuffer_fill(&screen, 0, 0, width, height,
+                     framebuffer_pack(&screen, 0x10, 0x10, 0x18));
+
+    framebuffer_fill(&screen, 0, 0, width, SCREEN_BORDER_PIXELS,
+                     framebuffer_pack(&screen, 0xFF, 0x00, 0x00));
+    framebuffer_fill(&screen, 0, height - SCREEN_BORDER_PIXELS, width,
+                     SCREEN_BORDER_PIXELS,
+                     framebuffer_pack(&screen, 0x00, 0xFF, 0x00));
+    framebuffer_fill(&screen, 0, 0, SCREEN_BORDER_PIXELS, height,
+                     framebuffer_pack(&screen, 0x00, 0x00, 0xFF));
+    framebuffer_fill(&screen, width - SCREEN_BORDER_PIXELS, 0,
+                     SCREEN_BORDER_PIXELS, height,
+                     framebuffer_pack(&screen, 0xFF, 0xFF, 0xFF));
+
+    /* A grey ramp across the middle. Uneven steps mean the channel widths were
+       read wrongly; a slanted edge means the pitch was. */
+    for (uint32_t x = 0; x < width; x++) {
+        uint8_t level = (uint8_t)(x * 255U / (width > 1U ? width - 1U : 1U));
+        framebuffer_fill(&screen, x, height / 2U, 1, SCREEN_BAR_PIXELS,
+                         framebuffer_pack(&screen, level, level, level));
+    }
+}
+
+/* Reads back what was just drawn. Nobody can see the screen from a serial log,
+   and a framebuffer address that is wrong, or a pitch that is, produces a
+   picture that is wrong in exactly the way this catches. */
+static bool screen_reads_back(void) {
+    const uint32_t inset = SCREEN_BORDER_PIXELS / 2U;
+    uint32_t width = screen.width;
+    uint32_t height = screen.height;
+
+    if (framebuffer_get(&screen, width / 2U, inset) !=
+        framebuffer_pack(&screen, 0xFF, 0x00, 0x00)) return false;
+    if (framebuffer_get(&screen, width / 2U, height - 1U - inset) !=
+        framebuffer_pack(&screen, 0x00, 0xFF, 0x00)) return false;
+    if (framebuffer_get(&screen, inset, height / 4U) !=
+        framebuffer_pack(&screen, 0x00, 0x00, 0xFF)) return false;
+    /* Sampled away from the middle, because the ramp is drawn across the whole
+       width and covers the side borders on the rows it occupies. */
+    if (framebuffer_get(&screen, width - 1U - inset, height / 4U) !=
+        framebuffer_pack(&screen, 0xFF, 0xFF, 0xFF)) return false;
+
+    /* The last pixel of the ramp is white and the first is black, which only
+       holds if the row really is `pitch` bytes long. */
+    if (framebuffer_get(&screen, width - 1U, height / 2U) !=
+        framebuffer_pack(&screen, 0xFF, 0xFF, 0xFF)) return false;
+    if (framebuffer_get(&screen, 0, height / 2U) !=
+        framebuffer_pack(&screen, 0x00, 0x00, 0x00)) return false;
+    return true;
+}
+
+static void acquire_screen(const struct fw_ops *fw) {
+    screen_present = fw_framebuffer_acquire(fw, &screen);
+    if (!screen_present) {
+        /* Not a failure: a machine with no display is one the loader has
+           nothing to say to except over the serial line. */
+        LOG_INFO("no framebuffer; serial only");
+        return;
+    }
+
+    LOG_INFO("screen %ux%u, %u bpp, pitch %u", (uint64_t)screen.width,
+             (uint64_t)screen.height, (uint64_t)screen.bits_per_pixel,
+             (uint64_t)screen.pitch);
+    paint_screen();
+    LOG_INFO("screen readback %s", screen_reads_back() ? "ok" : "WRONG");
+}
 
 static void report_features(const struct cpu_features *features) {
     LOG_INFO("cpu %s, %u physical / %u linear address bits",
@@ -356,6 +436,8 @@ void boot_core(const struct fw_ops *fw) {
         return;
     }
     report_memory(&memory);
+
+    acquire_screen(fw);
 
     if (!place_arena(&memory, &loader_arena)) {
         LOG_ERROR("no room for the loader arena");

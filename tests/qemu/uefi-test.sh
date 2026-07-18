@@ -51,6 +51,13 @@ require "the core never ran under uefi" "tunix-boot on uefi firmware"
 # everything above it is the same code the BIOS build runs.
 require "the firmware memory map was not usable" "memory: [1-9][0-9]* MiB usable"
 require "no arena was placed" "arena at [0-9a-f][0-9a-f]*"
+
+# The loader painted the screen and read its own pixels back. Nobody can see a
+# screen from a serial log, but a wrong framebuffer address or pitch produces a
+# picture that is wrong in exactly the way this catches.
+require "no framebuffer was acquired" "screen [1-9][0-9]*x[1-9][0-9]*, 32 bpp"
+require "the screen did not read back as drawn" "screen readback ok"
+
 require "the ata driver found no disk" "disk ata, [1-9][0-9]* sectors"
 require "the filesystem did not mount" "fat32 at lba 2048"
 require "the configuration was not read" "config: 1 entries"
