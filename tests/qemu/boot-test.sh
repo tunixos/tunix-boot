@@ -76,7 +76,7 @@ require "the kernel found its bss dirty" "^kernel bss was zeroed$"
 # describes the machine as it is now rather than as the firmware found it.
 require "the loader did not claim its own memory" \
     "after claiming: [0-9]* MiB usable"
-require "the kernel's requests were not answered" "answered 3 kernel requests"
+require "the kernel's requests were not answered" "answered 4 kernel requests"
 
 # Printed by the kernel out of the responses it was given, so each line is a
 # round trip: the kernel declared a request, the loader found it by scanning the
@@ -88,5 +88,9 @@ require "the kernel did not get a memory map" "^memory map received$"
 if printf '%s' "$output" | grep -q "a request went unanswered"; then
     fail "the kernel found one of its responses null"
 fi
+
+# There is no VBE on the BIOS path yet, so the kernel is told the screen is
+# absent — which it must be told, rather than left to guess.
+require "the kernel was not told the screen is absent" "^no framebuffer$"
 
 exit 0

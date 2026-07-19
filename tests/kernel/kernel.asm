@@ -74,6 +74,23 @@ _start:
 
     mov rsi, memory_message
     call write
+
+    ; A screen is optional, so a null response here is an answer and not a fault.
+    mov rax, [framebuffer_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .no_screen
+    cmp qword [rax + RESPONSE_SCREEN_BASE], 0
+    je .no_screen
+    cmp dword [rax + RESPONSE_SCREEN_WIDTH], 0
+    je .no_screen
+
+    mov rsi, screen_message
+    call write
+    jmp .halt
+
+.no_screen:
+    mov rsi, no_screen_message
+    call write
     jmp .halt
 
 .missing:
@@ -117,12 +134,15 @@ REQUEST_MAGIC_HIGH   equ 0x424f4f54503a3031
 REQUEST_MEMORY_MAP   equ 1
 REQUEST_COMMAND_LINE equ 3
 REQUEST_LOADER_INFO  equ 4
+REQUEST_FRAMEBUFFER  equ 5
 
 ; Offsets into the responses, which are what the ABI actually promises.
 RESPONSE_MEMORY_COUNT   equ 8
 RESPONSE_COMMAND_LINE   equ 8
 RESPONSE_LOADER_NAME    equ 8
 RESPONSE_LOADER_VERSION equ 16
+RESPONSE_SCREEN_BASE    equ 8
+RESPONSE_SCREEN_WIDTH   equ 16
 REQUEST_RESPONSE        equ 32
 
 memory_map_request:
@@ -137,6 +157,10 @@ loader_info_request:
     dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
     dq REQUEST_LOADER_INFO, 0, 0
 
+framebuffer_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_FRAMEBUFFER, 0, 0
+
 SECTION .rodata
 message:        db "kernel running", 10, 0
 clean_message:  db "kernel bss was zeroed", 10, 0
@@ -145,6 +169,8 @@ loaded_by:      db "loaded by ", 0
 space:          db " ", 0
 cmdline_label:  db "cmdline: ", 0
 memory_message: db "memory map received", 10, 0
+screen_message: db "framebuffer received", 10, 0
+no_screen_message: db "no framebuffer", 10, 0
 newline:        db 10, 0
 unanswered:     db "a request went unanswered", 10, 0
 
