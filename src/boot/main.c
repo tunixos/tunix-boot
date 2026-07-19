@@ -405,6 +405,7 @@ static bool answer_kernel_requests(const struct elf_image *kernel) {
         .kernel_physical_base = kernel->lowest_address,
         .kernel_virtual_base = kernel->segments[0].virtual_address,
         .command_line = command_line,
+        .screen = screen_present ? &screen : NULL,
     };
 
     int answered = protocol_answer(

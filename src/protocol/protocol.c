@@ -85,6 +85,36 @@ static bool answer_command_line(struct boot_request *request,
     return true;
 }
 
+static bool answer_framebuffer(struct boot_request *request,
+                               const struct boot_facts *facts,
+                               struct arena *arena) {
+    /* A machine with no screen leaves the response null, which is the protocol
+       already saying "there is none" — inventing an empty one would have the
+       kernel draw into address zero. */
+    if (!facts->screen) return true;
+
+    struct boot_framebuffer_response *response =
+        arena_allocate_zeroed(arena, sizeof *response);
+    if (!response) return false;
+
+    const struct framebuffer *screen = facts->screen;
+    response->revision = agreed_revision(request->revision);
+    response->base = (uint64_t)(uintptr_t)screen->base;
+    response->width = screen->width;
+    response->height = screen->height;
+    response->pitch = screen->pitch;
+    response->bits_per_pixel = screen->bits_per_pixel;
+    response->red_shift = screen->red.shift;
+    response->red_bits = screen->red.bits;
+    response->green_shift = screen->green.shift;
+    response->green_bits = screen->green.bits;
+    response->blue_shift = screen->blue.shift;
+    response->blue_bits = screen->blue.bits;
+
+    request->response = response;
+    return true;
+}
+
 static bool answer_loader_info(struct boot_request *request,
                                struct arena *arena) {
     struct boot_loader_info_response *response =
@@ -109,6 +139,8 @@ static bool answer(struct boot_request *request, const struct boot_facts *facts,
             return answer_command_line(request, facts, arena);
         case BOOT_REQUEST_LOADER_INFO:
             return answer_loader_info(request, arena);
+        case BOOT_REQUEST_FRAMEBUFFER:
+            return answer_framebuffer(request, facts, arena);
         default:
             /* A request this loader has never heard of keeps its null response,
                which is the protocol's way of saying so. */

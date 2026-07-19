@@ -6,6 +6,7 @@
 
 #include "memory/arena.h"
 #include "memory/map.h"
+#include "video/framebuffer.h"
 
 /*
  * What the loader tells the kernel, and how the kernel asks.
@@ -35,6 +36,7 @@
 #define BOOT_REQUEST_KERNEL_ADDRESS 2U
 #define BOOT_REQUEST_COMMAND_LINE 3U
 #define BOOT_REQUEST_LOADER_INFO 4U
+#define BOOT_REQUEST_FRAMEBUFFER 5U
 
 /* The scan steps by this, so a request must be aligned to it. Everything a
    compiler emits for a structure containing a uint64_t already is. */
@@ -92,6 +94,24 @@ struct boot_command_line_response {
     const char *command_line;
 };
 
+/* Channels as a shift and a width, the same way the loader carries them, so a
+   kernel can pack a colour without knowing which firmware described the mode. */
+struct boot_framebuffer_response {
+    uint64_t revision;
+    uint64_t base;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pitch;
+    uint32_t bits_per_pixel;
+    uint8_t red_shift;
+    uint8_t red_bits;
+    uint8_t green_shift;
+    uint8_t green_bits;
+    uint8_t blue_shift;
+    uint8_t blue_bits;
+    uint8_t reserved[2];
+};
+
 struct boot_loader_info_response {
     uint64_t revision;
     const char *name;
@@ -104,6 +124,9 @@ struct boot_facts {
     uint64_t kernel_physical_base;
     uint64_t kernel_virtual_base;
     const char *command_line;
+    /* NULL when the machine has no display the loader could find, which is not
+       an error — the kernel's request simply goes unanswered. */
+    const struct framebuffer *screen;
 };
 
 /* Scans `bytes` from `image` for requests and answers each one, allocating
