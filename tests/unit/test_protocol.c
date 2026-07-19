@@ -40,6 +40,7 @@ static void setup(void) {
     facts.kernel_physical_base = 0x400000;
     facts.kernel_virtual_base = 0xFFFFFFFF80000000ULL;
     facts.command_line = "root=/dev/sda1 quiet";
+    facts.screen = NULL;
 }
 
 static int answer_all(void) {
@@ -101,6 +102,47 @@ static void a_kernel_with_no_command_line_gets_an_empty_one(void) {
     /* Never null, so the kernel has one case to handle rather than two. */
     CHECK(response->command_line != NULL);
     CHECK(response->command_line[0] == '\0');
+}
+
+static void answers_a_framebuffer_request(void) {
+    static uint8_t screen_pixels[64];
+    struct framebuffer screen = {
+        .base = screen_pixels,
+        .width = 1280,
+        .height = 800,
+        .pitch = 5120,
+        .bits_per_pixel = 32,
+        .red = {16, 8},
+        .green = {8, 8},
+        .blue = {0, 8},
+    };
+    setup();
+    facts.screen = &screen;
+
+    struct boot_request *request = place_request(512, BOOT_REQUEST_FRAMEBUFFER, 0);
+    CHECK(answer_all() == 1);
+
+    struct boot_framebuffer_response *response = request->response;
+    CHECK(response != NULL);
+    CHECK(response->base == (uint64_t)(uintptr_t)screen_pixels);
+    CHECK(response->width == 1280 && response->height == 800);
+    /* The pitch matters more than the width: a kernel that computes it from the
+       width draws a sheared picture on any padded mode. */
+    CHECK(response->pitch == 5120);
+    CHECK(response->bits_per_pixel == 32);
+    CHECK(response->red_shift == 16 && response->red_bits == 8);
+    CHECK(response->blue_shift == 0 && response->blue_bits == 8);
+}
+
+static void a_machine_with_no_screen_leaves_the_response_null(void) {
+    setup();
+    facts.screen = NULL;
+
+    struct boot_request *request = place_request(512, BOOT_REQUEST_FRAMEBUFFER, 0);
+    /* Handled, but answered with nothing: inventing an empty framebuffer would
+       have the kernel draw into address zero. */
+    CHECK(answer_all() == 1);
+    CHECK(request->response == NULL);
 }
 
 static void answers_a_loader_info_request(void) {
@@ -234,6 +276,8 @@ TEST_MAIN(
     answers_a_kernel_address_request();
     answers_a_command_line_request();
     a_kernel_with_no_command_line_gets_an_empty_one();
+    answers_a_framebuffer_request();
+    a_machine_with_no_screen_leaves_the_response_null();
     answers_a_loader_info_request();
     answers_every_request_in_the_image();
     an_unknown_request_keeps_its_null_response();
