@@ -53,6 +53,7 @@ cpu_sources = files(
 fw_sources = files(
   'fw/fw.c',
   'fw/bios/e820.c',
+  'fw/bios/vbe.c',
   'fw/uefi/memory.c',
   'fw/uefi/graphics.c',
 )
