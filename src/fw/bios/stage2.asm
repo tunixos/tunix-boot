@@ -50,6 +50,43 @@ E820_MAX_ENTRIES     equ 128
 E820_ATTRIBUTE_OFFSET equ 20
 E820_ATTRIBUTE_VALID equ 1
 
+; INT 10h is real-mode too, so the mode is chosen and set here and the block the
+; card gave us is left where the core can read it. Clear of the E820 buffer,
+; which ends at 0x30C00.
+VBE_CONTROLLER_ADDRESS equ 0x31000
+VBE_CONTROLLER_SEGMENT equ VBE_CONTROLLER_ADDRESS >> 4
+VBE_MODE_INFO_ADDRESS  equ 0x31400
+VBE_MODE_INFO_SEGMENT  equ VBE_MODE_INFO_ADDRESS >> 4
+
+VBE_GET_CONTROLLER   equ 0x4F00
+VBE_GET_MODE_INFO    equ 0x4F01
+VBE_SET_MODE         equ 0x4F02
+VBE_SUPPORTED        equ 0x004F           ; what AX reads back on success
+VBE_SIGNATURE        equ 0x32454256       ; 'VBE2', asking for the newer block
+VBE_MODE_LIST_OFFSET equ 14
+VBE_MODE_END         equ 0xFFFF
+VBE_USE_LINEAR       equ 1 << 14
+
+; Offsets into the mode information block. Kept in step with fw/bios/vbe.h,
+; which is what actually interprets them.
+VBE_INFO_ATTRIBUTES  equ 0x00
+VBE_INFO_WIDTH       equ 0x12
+VBE_INFO_HEIGHT      equ 0x14
+VBE_INFO_DEPTH       equ 0x19
+VBE_INFO_MODEL       equ 0x1B
+
+VBE_ATTR_SUPPORTED   equ 1 << 0
+VBE_ATTR_GRAPHICS    equ 1 << 4
+VBE_ATTR_LINEAR      equ 1 << 7
+VBE_ATTR_WANTED      equ VBE_ATTR_SUPPORTED | VBE_ATTR_GRAPHICS | VBE_ATTR_LINEAR
+VBE_MODEL_DIRECT     equ 6
+VBE_WANTED_DEPTH     equ 32
+
+; What to ask for. Anything else acceptable is kept as a fallback, so a card
+; without this exact mode still gets a screen.
+VBE_PREFERRED_WIDTH  equ 1024
+VBE_PREFERRED_HEIGHT equ 768
+
 SELECTOR_CODE64      equ 0x08
 SELECTOR_DATA64      equ 0x10
 SELECTOR_CODE32      equ 0x18
@@ -72,6 +109,7 @@ stage2_start:
 
     call enable_a20
     call collect_memory_map
+    call set_video_mode
     call build_page_tables
 
     lgdt [gdt_pointer]
@@ -155,6 +193,107 @@ collect_memory_map:
     popad
     ret
 
+; Finds a linear-framebuffer mode, sets it, and leaves its information block at
+; VBE_MODE_INFO_ADDRESS. Judges only what it must to choose between modes; the
+; block is validated in C, where that can be tested.
+set_video_mode:
+    pushad
+    push es
+
+    mov ax, VBE_CONTROLLER_SEGMENT
+    mov es, ax
+    xor di, di
+    ; Asking for the VBE 2 block, which is what carries the linear address.
+    mov dword [es:di], VBE_SIGNATURE
+    mov ax, VBE_GET_CONTROLLER
+    int 0x10
+    cmp ax, VBE_SUPPORTED
+    jne .done
+
+    ; The mode list is a far pointer, and the segment it points into is not
+    ; necessarily the one the block is in.
+    mov si, [es:VBE_MODE_LIST_OFFSET]
+    mov ax, [es:VBE_MODE_LIST_OFFSET + 2]
+    mov fs, ax
+
+    xor bp, bp                      ; the fallback mode, 0 for none
+
+.next_mode:
+    mov cx, [fs:si]
+    add si, 2
+    cmp cx, VBE_MODE_END
+    je .choose
+
+    push cx
+    push si
+    mov ax, VBE_MODE_INFO_SEGMENT
+    mov es, ax
+    xor di, di
+    mov ax, VBE_GET_MODE_INFO
+    int 0x10
+    pop si
+    pop cx
+    cmp ax, VBE_SUPPORTED
+    jne .next_mode
+
+    mov ax, [es:VBE_INFO_ATTRIBUTES]
+    and ax, VBE_ATTR_WANTED
+    cmp ax, VBE_ATTR_WANTED
+    jne .next_mode
+    cmp byte [es:VBE_INFO_DEPTH], VBE_WANTED_DEPTH
+    jne .next_mode
+    cmp byte [es:VBE_INFO_MODEL], VBE_MODEL_DIRECT
+    jne .next_mode
+
+    ; Acceptable. Take it outright if it is the size we asked for, otherwise
+    ; keep it and carry on looking.
+    mov bp, cx
+    cmp word [es:VBE_INFO_WIDTH], VBE_PREFERRED_WIDTH
+    jne .next_mode
+    cmp word [es:VBE_INFO_HEIGHT], VBE_PREFERRED_HEIGHT
+    jne .next_mode
+    jmp .set
+
+.choose:
+    test bp, bp
+    jz .done
+
+.set:
+    ; The information block in memory is whichever mode was looked at last, so
+    ; the chosen one is fetched again before it is set.
+    mov cx, bp
+    push cx
+    mov ax, VBE_MODE_INFO_SEGMENT
+    mov es, ax
+    xor di, di
+    mov ax, VBE_GET_MODE_INFO
+    int 0x10
+    pop cx
+    cmp ax, VBE_SUPPORTED
+    jne .failed
+
+    mov bx, cx
+    or bx, VBE_USE_LINEAR
+    mov ax, VBE_SET_MODE
+    int 0x10
+    cmp ax, VBE_SUPPORTED
+    je .done
+
+.failed:
+    ; A block of zeroes is a mode the core will refuse, which is what should
+    ; happen when the mode could not be set.
+    mov ax, VBE_MODE_INFO_SEGMENT
+    mov es, ax
+    xor di, di
+    xor ax, ax
+    mov cx, 128
+    rep stosw
+
+.done:
+    pop es
+    popad
+    ret
+
 build_page_tables:
     pushad
 
@@ -217,6 +356,7 @@ long_mode_entry:
     xor rsi, rsi
     mov si, [memory_map_count]
     mov edx, E820_BUFFER_ADDRESS
+    mov ecx, VBE_MODE_INFO_ADDRESS
     call boot_main
 
 .halt:

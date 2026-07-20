@@ -8,6 +8,6 @@
 /* Wraps what stage2 gathered before it left real mode. The returned pointer is
    to storage that outlives the call; there is one firmware and one loader. */
 const struct fw_ops *fw_bios_init(uint8_t drive, uint32_t e820_count,
-                                  uint64_t e820_buffer);
+                                  uint64_t e820_buffer, uint64_t vbe_mode_info);
 
 #endif
