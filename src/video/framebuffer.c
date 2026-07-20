@@ -85,9 +85,19 @@ void framebuffer_fill(const struct framebuffer *fb, uint32_t x, uint32_t y,
     if (width > fb->width - x) width = fb->width - x;
     if (height > fb->height - y) height = fb->height - y;
 
+    uint32_t bytes = framebuffer_bytes_per_pixel(fb);
+
+    /* Along each row from one starting pointer rather than through
+       framebuffer_put per pixel. A framebuffer is uncached memory across a bus,
+       so clearing a screen this way is the difference between a loader that
+       appears instantly and one that appears to have hung. */
     for (uint32_t row = 0; row < height; row++) {
+        uint8_t *at = pixel_at(fb, x, y + row);
         for (uint32_t column = 0; column < width; column++) {
-            framebuffer_put(fb, x + column, y + row, colour);
+            for (uint32_t index = 0; index < bytes; index++) {
+                at[index] = (uint8_t)(colour >> (index * FRAMEBUFFER_BITS_PER_BYTE));
+            }
+            at += bytes;
         }
     }
 }
