@@ -89,8 +89,10 @@ if printf '%s' "$output" | grep -q "a request went unanswered"; then
     fail "the kernel found one of its responses null"
 fi
 
-# There is no VBE on the BIOS path yet, so the kernel is told the screen is
-# absent — which it must be told, rather than left to guess.
-require "the kernel was not told the screen is absent" "^no framebuffer$"
+# stage2 found a VBE mode and set it before leaving real mode, so this path has
+# a screen too — and the loader read its own pixels back off it.
+require "no vbe mode was set" "screen [1-9][0-9]*x[1-9][0-9]*, 32 bpp"
+require "the screen did not read back as drawn" "screen readback ok"
+require "the kernel was not given the framebuffer" "^framebuffer received$"
 
 exit 0
