@@ -93,6 +93,7 @@ fi
 # a screen too — and the loader read its own pixels back off it.
 require "no vbe mode was set" "screen [1-9][0-9]*x[1-9][0-9]*, 32 bpp"
 require "the screen did not read back as drawn" "screen readback ok"
+require "no terminal was opened on the screen" "terminal [1-9][0-9]*x[1-9][0-9]* characters"
 require "the kernel was not given the framebuffer" "^framebuffer received$"
 
 exit 0

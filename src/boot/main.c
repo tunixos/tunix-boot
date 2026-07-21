@@ -8,6 +8,7 @@
 #include "log/log.h"
 #include "memory/arena.h"
 #include "memory/paging.h"
+#include "terminal/font8x8.h"
 #include "protocol/protocol.h"
 
 #define LOADER_ARENA_BYTES (1024ULL * 1024ULL)
@@ -71,6 +72,7 @@ static struct elf_image kernel_image;
 static uint64_t arena_base;
 static struct framebuffer screen;
 static bool screen_present;
+static struct terminal screen_terminal;
 
 /* Enough to tell, from across a room, that the loader reached this point and
    that the mode it was told about is the mode it is drawing on: a border in
@@ -134,6 +136,13 @@ static bool screen_reads_back(void) {
     return true;
 }
 
+/* Everything the loader logs also goes to the screen once there is one, so a
+   machine that will not boot says why to whoever is looking at it rather than
+   only to whoever brought a serial cable. */
+static void screen_sink(const char *text) {
+    terminal_write(&screen_terminal, text);
+}
+
 static void acquire_screen(const struct fw_ops *fw) {
     screen_present = fw_framebuffer_acquire(fw, &screen);
     if (!screen_present) {
@@ -148,6 +157,18 @@ static void acquire_screen(const struct fw_ops *fw) {
              (uint64_t)screen.pitch);
     paint_screen();
     LOG_INFO("screen readback %s", screen_reads_back() ? "ok" : "WRONG");
+
+    if (!terminal_init(&screen_terminal, &screen, font8x8(),
+                       framebuffer_pack(&screen, 0xD0, 0xD0, 0xD0),
+                       framebuffer_pack(&screen, 0x10, 0x10, 0x18))) {
+        LOG_INFO("the screen is too small for a terminal");
+        return;
+    }
+    terminal_clear(&screen_terminal);
+    log_add_sink(screen_sink);
+
+    LOG_INFO("terminal %ux%u characters", (uint64_t)screen_terminal.columns,
+             (uint64_t)screen_terminal.rows);
 }
 
 static void report_features(const struct cpu_features *features) {

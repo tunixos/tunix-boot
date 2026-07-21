@@ -57,6 +57,7 @@ require "no arena was placed" "arena at [0-9a-f][0-9a-f]*"
 # picture that is wrong in exactly the way this catches.
 require "no framebuffer was acquired" "screen [1-9][0-9]*x[1-9][0-9]*, 32 bpp"
 require "the screen did not read back as drawn" "screen readback ok"
+require "no terminal was opened on the screen" "terminal [1-9][0-9]*x[1-9][0-9]* characters"
 
 require "the ata driver found no disk" "disk ata, [1-9][0-9]* sectors"
 require "the filesystem did not mount" "fat32 at lba 2048"
