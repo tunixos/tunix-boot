@@ -22,6 +22,7 @@ unit_tests = [
   ['terminal', 'test_terminal.c'],
   ['uefi-graphics', 'test_uefi_graphics.c'],
   ['vbe', 'test_vbe.c'],
+  ['font8x8', 'test_font8x8.c'],
 ]
 
 foreach entry : unit_tests
