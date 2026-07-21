@@ -1,6 +1,7 @@
 #ifndef TUNIX_BOOT_LOG_LOG_H
 #define TUNIX_BOOT_LOG_LOG_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define LOG_LEVEL_NONE 0
@@ -16,6 +17,10 @@
 typedef void (*log_sink)(const char *text);
 
 void log_set_sink(log_sink sink);
+
+/* A second place for the same output. The serial line is set up long before
+   there is a screen, and once there is one both should say the same thing. */
+bool log_add_sink(log_sink extra);
 
 /* A deliberately small format language: %s, %u, %x, %p, %%. A bootloader that
    needs more than this in its log is doing something in the log that belongs in

@@ -9,7 +9,11 @@
 #define NUMBER_BUFFER_BYTES 21U
 #define POINTER_PREFIX "0x"
 
-static log_sink sink;
+/* Two: the serial line, and the screen once there is one. */
+#define LOG_MAX_SINKS 2U
+
+static log_sink sinks[LOG_MAX_SINKS];
+static unsigned sink_count;
 
 static const char *level_tag(int level) {
     switch (level) {
@@ -21,7 +25,7 @@ static const char *level_tag(int level) {
 }
 
 static void emit(const char *text) {
-    if (sink) sink(text);
+    for (unsigned index = 0; index < sink_count; index++) sinks[index](text);
 }
 
 static void emit_unsigned(uint64_t value, uint64_t base) {
@@ -44,7 +48,14 @@ static void emit_unsigned(uint64_t value, uint64_t base) {
 }
 
 void log_set_sink(log_sink new_sink) {
-    sink = new_sink;
+    sink_count = 0;
+    if (new_sink) sinks[sink_count++] = new_sink;
+}
+
+bool log_add_sink(log_sink extra) {
+    if (!extra || sink_count == LOG_MAX_SINKS) return false;
+    sinks[sink_count++] = extra;
+    return true;
 }
 
 void log_emit(int level, const char *format, ...) {
