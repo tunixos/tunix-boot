@@ -7,6 +7,7 @@
 #include "memory/arena.h"
 #include "memory/map.h"
 #include "video/framebuffer.h"
+#include "acpi/acpi.h"
 
 /*
  * What the loader tells the kernel, and how the kernel asks.
@@ -37,6 +38,8 @@
 #define BOOT_REQUEST_COMMAND_LINE 3U
 #define BOOT_REQUEST_LOADER_INFO 4U
 #define BOOT_REQUEST_FRAMEBUFFER 5U
+#define BOOT_REQUEST_ACPI 6U
+#define BOOT_REQUEST_PROCESSORS 7U
 
 /* The scan steps by this, so a request must be aligned to it. Everything a
    compiler emits for a structure containing a uint64_t already is. */
@@ -112,6 +115,25 @@ struct boot_framebuffer_response {
     uint8_t reserved[2];
 };
 
+/* The address of the RSDP, not a copy of it: the tables it leads to stay where
+   the firmware put them, and the kernel walks them itself. */
+struct boot_acpi_response {
+    uint64_t revision;
+    uint64_t rsdp;
+};
+
+struct boot_processor {
+    uint32_t apic_id;
+    uint32_t startable;
+};
+
+struct boot_processors_response {
+    uint64_t revision;
+    uint64_t count;
+    uint64_t local_apic_address;
+    struct boot_processor *entries;
+};
+
 struct boot_loader_info_response {
     uint64_t revision;
     const char *name;
@@ -127,6 +149,9 @@ struct boot_facts {
     /* NULL when the machine has no display the loader could find, which is not
        an error — the kernel's request simply goes unanswered. */
     const struct framebuffer *screen;
+    /* NULL when the machine has no ACPI tables the loader could believe. */
+    const void *rsdp;
+    const struct acpi_processors *processors;
 };
 
 /* Scans `bytes` from `image` for requests and answers each one, allocating

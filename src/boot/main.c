@@ -1,3 +1,4 @@
+#include "acpi/acpi.h"
 #include "block/ata.h"
 #include "block/partition.h"
 #include "boot/core.h"
@@ -8,6 +9,7 @@
 #include "log/log.h"
 #include "memory/arena.h"
 #include "memory/paging.h"
+#include "pci/pci.h"
 #include "terminal/font8x8.h"
 #include "protocol/protocol.h"
 
@@ -73,6 +75,10 @@ static uint64_t arena_base;
 static struct framebuffer screen;
 static bool screen_present;
 static struct terminal screen_terminal;
+static struct acpi_tables acpi;
+static struct acpi_processors processors;
+static bool acpi_present;
+static struct pci_devices pci;
 
 /* Enough to tell, from across a room, that the loader reached this point and
    that the mode it was told about is the mode it is drawing on: a border in
@@ -169,6 +175,55 @@ static void acquire_screen(const struct fw_ops *fw) {
 
     LOG_INFO("terminal %ux%u characters", (uint64_t)screen_terminal.columns,
              (uint64_t)screen_terminal.rows);
+}
+
+/* What the firmware says about the machine, so the kernel does not have to go
+   looking for it a second time — and so a machine whose tables are unreadable
+   says so here rather than in the kernel. */
+static void describe_machine(const struct fw_ops *fw) {
+    const void *rsdp = fw_rsdp_locate(fw);
+    if (!rsdp) {
+        LOG_INFO("no acpi tables");
+        return;
+    }
+
+    acpi_present = acpi_collect(rsdp, acpi_identity_map, NULL, &acpi);
+    if (!acpi_present) {
+        LOG_ERROR("the acpi root table could not be believed");
+        return;
+    }
+    LOG_INFO("acpi revision %u, %u tables%s", (uint64_t)acpi.revision,
+             (uint64_t)acpi.count, acpi.truncated ? " (truncated)" : "");
+
+    if (!acpi_processors(&acpi, &processors)) {
+        LOG_INFO("no processor list");
+        return;
+    }
+
+    unsigned enabled = 0;
+    for (unsigned index = 0; index < processors.count; index++)
+        if (processors.entries[index].enabled) enabled++;
+
+    LOG_INFO("%u processors, %u startable, local apic at %x",
+             (uint64_t)processors.count, (uint64_t)enabled,
+             processors.local_apic_address);
+}
+
+static void describe_devices(void) {
+    unsigned found = pci_enumerate(pci_port_config_read, NULL, &pci);
+    if (found == 0) {
+        LOG_INFO("no pci devices");
+        return;
+    }
+    LOG_INFO("pci: %u devices%s", (uint64_t)found,
+             pci.truncated ? " (truncated)" : "");
+    for (unsigned index = 0; index < found; index++) {
+        const struct pci_device *device = &pci.entries[index];
+        LOG_DEBUG("  %u:%u.%u %x:%x class %x.%x", (uint64_t)device->bus,
+                  (uint64_t)device->device, (uint64_t)device->function,
+                  (uint64_t)device->vendor, (uint64_t)device->identifier,
+                  (uint64_t)device->class_code, (uint64_t)device->subclass);
+    }
 }
 
 static void report_features(const struct cpu_features *features) {
@@ -427,6 +482,8 @@ static bool answer_kernel_requests(const struct elf_image *kernel) {
         .kernel_virtual_base = kernel->segments[0].virtual_address,
         .command_line = command_line,
         .screen = screen_present ? &screen : NULL,
+        .rsdp = acpi_present ? acpi.rsdp : NULL,
+        .processors = processors.count > 0 ? &processors : NULL,
     };
 
     int answered = protocol_answer(
@@ -460,6 +517,9 @@ void boot_core(const struct fw_ops *fw) {
     report_memory(&memory);
 
     acquire_screen(fw);
+
+    describe_machine(fw);
+    describe_devices();
 
     if (!place_arena(&memory, &loader_arena)) {
         LOG_ERROR("no room for the loader arena");
