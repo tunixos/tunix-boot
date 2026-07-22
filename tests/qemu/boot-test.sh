@@ -76,7 +76,7 @@ require "the kernel found its bss dirty" "^kernel bss was zeroed$"
 # describes the machine as it is now rather than as the firmware found it.
 require "the loader did not claim its own memory" \
     "after claiming: [0-9]* MiB usable"
-require "the kernel's requests were not answered" "answered 4 kernel requests"
+require "the kernel's requests were not answered" "answered 6 kernel requests"
 
 # Printed by the kernel out of the responses it was given, so each line is a
 # round trip: the kernel declared a request, the loader found it by scanning the
@@ -95,5 +95,13 @@ require "no vbe mode was set" "screen [1-9][0-9]*x[1-9][0-9]*, 32 bpp"
 require "the screen did not read back as drawn" "screen readback ok"
 require "no terminal was opened on the screen" "terminal [1-9][0-9]*x[1-9][0-9]* characters"
 require "the kernel was not given the framebuffer" "^framebuffer received$"
+
+# The firmware description the loader found, handed on so the kernel does not
+# walk the tables a second time before it has to.
+require "the kernel was not given the acpi tables" "^acpi tables received$"
+require "the kernel was not given the processor list" \
+    "^processor list received$"
+require "no processors were found" "[1-9][0-9]* processors, [1-9][0-9]* startable"
+require "no pci devices were enumerated" "pci: [1-9][0-9]* devices"
 
 exit 0

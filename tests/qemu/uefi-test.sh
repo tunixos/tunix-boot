@@ -63,7 +63,7 @@ require "the ata driver found no disk" "disk ata, [1-9][0-9]* sectors"
 require "the filesystem did not mount" "fat32 at lba 2048"
 require "the configuration was not read" "config: 1 entries"
 require "the kernel was not loaded" "kernel loaded, entering at ffffffff80000000"
-require "the kernel's requests were not answered" "answered 4 kernel requests"
+require "the kernel's requests were not answered" "answered 6 kernel requests"
 
 # Printed by the kernel, so the whole chain ran under firmware the loader was
 # not written against.
@@ -75,5 +75,13 @@ require "the kernel did not get its command line" \
 # The screen the loader acquired reached the kernel. The same kernel prints the
 # other line on the BIOS path, where there is no VBE yet.
 require "the kernel was not given the framebuffer" "^framebuffer received$"
+
+# The firmware description the loader found, handed on so the kernel does not
+# walk the tables a second time before it has to.
+require "the kernel was not given the acpi tables" "^acpi tables received$"
+require "the kernel was not given the processor list" \
+    "^processor list received$"
+require "no processors were found" "[1-9][0-9]* processors, [1-9][0-9]* startable"
+require "no pci devices were enumerated" "pci: [1-9][0-9]* devices"
 
 exit 0

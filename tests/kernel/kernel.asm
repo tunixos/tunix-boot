@@ -86,10 +86,29 @@ _start:
 
     mov rsi, screen_message
     call write
-    jmp .halt
+    jmp .machine
 
 .no_screen:
     mov rsi, no_screen_message
+    call write
+
+    ; What the firmware said about the machine, found by the loader so the
+    ; kernel does not have to go looking a second time.
+.machine:
+    mov rax, [acpi_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .halt
+    cmp qword [rax + RESPONSE_ACPI_RSDP], 0
+    je .halt
+    mov rsi, acpi_message
+    call write
+
+    mov rax, [processors_request + REQUEST_RESPONSE]
+    test rax, rax
+    jz .halt
+    cmp qword [rax + RESPONSE_CPU_COUNT], 0
+    je .halt
+    mov rsi, cpu_message
     call write
     jmp .halt
 
@@ -135,6 +154,8 @@ REQUEST_MEMORY_MAP   equ 1
 REQUEST_COMMAND_LINE equ 3
 REQUEST_LOADER_INFO  equ 4
 REQUEST_FRAMEBUFFER  equ 5
+REQUEST_ACPI         equ 6
+REQUEST_PROCESSORS   equ 7
 
 ; Offsets into the responses, which are what the ABI actually promises.
 RESPONSE_MEMORY_COUNT   equ 8
@@ -143,6 +164,8 @@ RESPONSE_LOADER_NAME    equ 8
 RESPONSE_LOADER_VERSION equ 16
 RESPONSE_SCREEN_BASE    equ 8
 RESPONSE_SCREEN_WIDTH   equ 16
+RESPONSE_ACPI_RSDP      equ 8
+RESPONSE_CPU_COUNT      equ 8
 REQUEST_RESPONSE        equ 32
 
 memory_map_request:
@@ -161,6 +184,14 @@ framebuffer_request:
     dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
     dq REQUEST_FRAMEBUFFER, 0, 0
 
+acpi_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_ACPI, 0, 0
+
+processors_request:
+    dq REQUEST_MAGIC_LOW, REQUEST_MAGIC_HIGH
+    dq REQUEST_PROCESSORS, 0, 0
+
 SECTION .rodata
 message:        db "kernel running", 10, 0
 clean_message:  db "kernel bss was zeroed", 10, 0
@@ -171,6 +202,8 @@ cmdline_label:  db "cmdline: ", 0
 memory_message: db "memory map received", 10, 0
 screen_message: db "framebuffer received", 10, 0
 no_screen_message: db "no framebuffer", 10, 0
+acpi_message:      db "acpi tables received", 10, 0
+cpu_message:       db "processor list received", 10, 0
 newline:        db 10, 0
 unanswered:     db "a request went unanswered", 10, 0
 
