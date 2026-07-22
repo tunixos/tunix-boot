@@ -23,8 +23,18 @@ EXTENSIONS_REPLY      equ 0xAA55
 INT_VIDEO             equ 0x10
 VIDEO_TELETYPE        equ 0x0E
 
+; Read in chunks, so this is only bounded by where stage2 is allowed to land.
+SECTORS_PER_READ      equ 64
+PARAGRAPHS_PER_SECTOR equ 32          ; 512 bytes / 16
+
+; Offsets into the disk address packet, which the read takes in memory.
+DAP_SECTORS           equ 2
+DAP_OFFSET            equ 4
+DAP_SEGMENT           equ 6
+DAP_LBA               equ 8
+
 %ifndef STAGE2_SECTORS
-%define STAGE2_SECTORS 120
+%define STAGE2_SECTORS 256
 %endif
 
 start:
@@ -48,11 +58,41 @@ start:
     cmp bx, EXTENSIONS_REPLY
     jne .no_extensions
 
+    ; A chunk at a time. Many BIOSes refuse more than 127 sectors in one
+    ; extended read, and stage2 passed that some time ago.
+    mov cx, STAGE2_SECTORS
+
+.read_chunk:
+    mov ax, SECTORS_PER_READ
+    cmp cx, ax
+    jae .full_chunk
+    mov ax, cx
+.full_chunk:
+    mov [disk_address_packet + DAP_SECTORS], ax
+
+    push ax
+    push cx
     mov si, disk_address_packet
     mov ah, DISK_EXTENDED_READ
     mov dl, [boot_drive]
     int INT_DISK
+    pop cx
+    pop ax
     jc .read_failed
+
+    ; Onwards by what was just read: the LBA in sectors, and the destination in
+    ; paragraphs, which is what lets this reach past one segment.
+    add word [disk_address_packet + DAP_LBA], ax
+    adc word [disk_address_packet + DAP_LBA + 2], 0
+
+    push ax
+    mov bx, PARAGRAPHS_PER_SECTOR
+    mul bx
+    add [disk_address_packet + DAP_SEGMENT], ax
+    pop ax
+
+    sub cx, ax
+    jnz .read_chunk
 
     mov dl, [boot_drive]
     jmp STAGE2_LOAD_SEGMENT:STAGE2_LOAD_OFFSET

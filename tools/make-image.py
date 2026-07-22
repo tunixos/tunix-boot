@@ -14,9 +14,9 @@ import sys
 
 SECTOR_BYTES = 512
 BOOT_RECORD_SECTORS = 1
-# One INT 13h read. Many BIOSes refuse more than 127 sectors in a single call,
-# so growing past this means teaching stage1 to read in chunks, not raising it.
-STAGE2_MAX_SECTORS = 120
+# stage1 reads this in chunks of 64, so the only real bound is that the loader
+# area must stay clear of the partition.
+STAGE2_MAX_SECTORS = 256
 
 # Where the partition table lives inside the boot record. stage1 is well short
 # of this; make-image refuses to write over it if that ever stops being true.
