@@ -32,3 +32,8 @@ bool fw_framebuffer_acquire(const struct fw_ops *fw, struct framebuffer *out) {
        none, so the description is checked here rather than trusted. */
     return framebuffer_valid(out);
 }
+
+const void *fw_rsdp_locate(const struct fw_ops *fw) {
+    if (!fw || !fw->rsdp_locate) return NULL;
+    return fw->rsdp_locate(fw);
+}

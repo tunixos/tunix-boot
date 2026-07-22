@@ -40,6 +40,10 @@ struct fw_ops {
 
     void (*console_write)(const struct fw_ops *fw, const char *text);
 
+    /* Where the ACPI tables start. Under UEFI the firmware says so outright;
+       under BIOS there is nobody to ask and it has to be searched for. */
+    const void *(*rsdp_locate)(const struct fw_ops *fw);
+
     /* The screen, if there is one. Must be called before boot services end —
        under UEFI the protocol that describes it goes away with them — which is
        why this is a separate call and not part of the memory snapshot. */
@@ -56,6 +60,8 @@ bool fw_block_read(const struct fw_ops *fw, uint64_t lba, uint32_t sectors,
 void fw_console_write(const struct fw_ops *fw, const char *text);
 
 bool fw_framebuffer_acquire(const struct fw_ops *fw, struct framebuffer *out);
+
+const void *fw_rsdp_locate(const struct fw_ops *fw);
 
 const char *fw_name(const struct fw_ops *fw);
 

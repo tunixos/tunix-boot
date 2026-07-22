@@ -1,12 +1,19 @@
+#include "acpi/acpi.h"
 #include "fw/uefi/graphics.h"
 #include "fw/uefi/memory.h"
 #include "fw/uefi/uefi.h"
 #include "fw/fw.h"
+#include "util/mem.h"
 
 #define FW_UEFI_NAME "uefi"
 
 static const struct efi_guid graphics_output_guid =
     EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+static const struct efi_guid acpi_table_guid = EFI_ACPI_20_TABLE_GUID;
+
+static bool same_guid(const struct efi_guid *left, const struct efi_guid *right) {
+    return memcmp(left, right, sizeof *left) == 0;
+}
 
 bool uefi_system_table_valid(const struct efi_system_table *table) {
     if (!table) return false;
@@ -105,6 +112,22 @@ static bool uefi_framebuffer_acquire(const struct fw_ops *fw,
                                   graphics->mode->framebuffer_base, out);
 }
 
+/* The firmware lists it outright, so there is nothing to search for — and the
+   entry it lists is only worth using if it really is an RSDP. */
+static const void *uefi_rsdp_locate(const struct fw_ops *fw) {
+    const struct fw_uefi *self = (const struct fw_uefi *)fw;
+    const struct efi_system_table *system = self->system;
+
+    if (!system->configuration_table) return NULL;
+    for (uint64_t index = 0; index < system->configuration_table_count; index++) {
+        const struct efi_configuration_table *entry =
+            &system->configuration_table[index];
+        if (!same_guid(&entry->vendor_guid, &acpi_table_guid)) continue;
+        if (acpi_rsdp_valid(entry->vendor_table)) return entry->vendor_table;
+    }
+    return NULL;
+}
+
 /*
  * Leaving boot services. The map has to be re-read immediately beforehand,
  * because ExitBootServices only accepts the key from a map that is still
@@ -147,6 +170,7 @@ const struct fw_ops *fw_uefi_init(efi_handle image,
     firmware.ops.name = FW_UEFI_NAME;
     firmware.ops.mem_snapshot = uefi_mem_snapshot;
     firmware.ops.framebuffer_acquire = uefi_framebuffer_acquire;
+    firmware.ops.rsdp_locate = uefi_rsdp_locate;
     firmware.system = system;
     firmware.image = image;
     firmware.exited = false;

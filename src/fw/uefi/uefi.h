@@ -146,6 +146,14 @@ struct efi_graphics_output {
     struct efi_graphics_mode *mode;
 };
 
+#define EFI_ACPI_20_TABLE_GUID                                                \
+    {0x8868E871, 0xE4F1, 0x11D3, {0xBC, 0x22, 0x00, 0x80, 0xC7, 0x3C, 0x88, 0x81}}
+
+struct efi_configuration_table {
+    struct efi_guid vendor_guid;
+    void *vendor_table;
+};
+
 struct efi_system_table {
     struct efi_table_header header;
     const uint16_t *firmware_vendor;
@@ -158,6 +166,8 @@ struct efi_system_table {
     struct efi_simple_text_output *standard_error;
     void *runtime_services;
     struct efi_boot_services *boot_services;
+    uint64_t configuration_table_count;
+    struct efi_configuration_table *configuration_table;
 };
 
 /* Room for the map plus what GetMemoryMap may grow by between the call that
