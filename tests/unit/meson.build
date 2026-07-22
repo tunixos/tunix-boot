@@ -23,6 +23,8 @@ unit_tests = [
   ['uefi-graphics', 'test_uefi_graphics.c'],
   ['vbe', 'test_vbe.c'],
   ['font8x8', 'test_font8x8.c'],
+  ['acpi', 'test_acpi.c'],
+  ['pci', 'test_pci.c'],
 ]
 
 foreach entry : unit_tests
