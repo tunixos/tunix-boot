@@ -8,15 +8,15 @@ log: util
 serial: util
 cpu: util
 memory: util cpu
-fw: util cpu memory video log serial
+fw: util cpu memory video acpi log serial
 block: util cpu memory fw log
 fs: util memory block log
 elf: util memory fs log
 config: util memory fs log
 video: util memory log
 terminal: util video log
-acpi: util memory fw log
+acpi: util memory log
 smp: util cpu memory acpi log
-pci: util memory acpi log
+pci: util cpu memory acpi log
 protocol: util cpu memory fw elf video acpi smp pci log
 boot: util cpu memory fw block fs elf config video terminal acpi smp pci protocol log serial

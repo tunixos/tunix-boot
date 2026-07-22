@@ -10,6 +10,14 @@ memory_sources = files(
   'memory/paging.c',
 )
 
+pci_sources = files(
+  'pci/pci.c',
+)
+
+acpi_sources = files(
+  'acpi/acpi.c',
+)
+
 block_sources = files(
   'block/block.c',
   'block/ata.c',
@@ -61,7 +69,7 @@ fw_sources = files(
 
 core_library = static_library(
   'tunix-boot-core',
-  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources + protocol_sources + video_sources + terminal_sources,
+  util_sources + cpu_sources + memory_sources + fw_sources + block_sources + fs_sources + elf_sources + config_sources + protocol_sources + video_sources + terminal_sources + acpi_sources + pci_sources,
   include_directories: include_directories_root,
 )
 
