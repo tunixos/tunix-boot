@@ -10,6 +10,7 @@ uefi_sources = files(
   # driver that uses it; it stays out of the host library because it is the
   # one place that really touches hardware.
   '../../block/ata_port.c',
+  '../../pci/pci_port.c',
 )
 
 uefi_backend = static_library(

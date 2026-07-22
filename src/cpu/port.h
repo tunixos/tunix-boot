@@ -16,6 +16,16 @@ static inline void port_write_u8(uint16_t port, uint8_t value) {
     __asm__ __volatile__("outb %0, %1" : : "a"(value), "Nd"(port) : "memory");
 }
 
+static inline uint32_t port_read_u32(uint16_t port) {
+    uint32_t value;
+    __asm__ __volatile__("inl %1, %0" : "=a"(value) : "Nd"(port) : "memory");
+    return value;
+}
+
+static inline void port_write_u32(uint16_t port, uint32_t value) {
+    __asm__ __volatile__("outl %0, %1" : : "a"(value), "Nd"(port) : "memory");
+}
+
 static inline uint16_t port_read_u16(uint16_t port) {
     uint16_t value;
     __asm__ __volatile__("inw %1, %0" : "=a"(value) : "Nd"(port) : "memory");
