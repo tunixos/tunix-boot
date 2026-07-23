@@ -84,4 +84,9 @@ require "the kernel was not given the processor list" \
 require "no processors were found" "[1-9][0-9]* processors, [1-9][0-9]* startable"
 require "no pci devices were enumerated" "pci: [1-9][0-9]* devices"
 
+# The kernel is linked as three segments with different permissions, so this
+# says the loader mapped them differently rather than making everything RWX.
+require "the kernel was mapped without w^x" \
+    "kernel mapping: 1 executable, 1 writable, nx on"
+
 exit 0
