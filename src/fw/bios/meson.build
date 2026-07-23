@@ -19,6 +19,7 @@ stage2_sources = files(
   '../../log/log.c',
   '../../serial/serial.c',
   'fw_bios.c',
+  '../../boot/guard.c',
   '../../block/ata_port.c',
   '../../pci/pci_port.c',
 )

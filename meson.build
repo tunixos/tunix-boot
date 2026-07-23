@@ -15,7 +15,12 @@ python = import('python').find_installation('python3')
 
 freestanding_arguments = [
   '-ffreestanding',
-  '-fno-stack-protector',
+  # Every parser here writes into a stack buffer from data it did not choose.
+  '-fstack-protector-strong',
+  # Read the canary from our own symbol, not from %fs:0x28. There is no thread
+  # block here and the FS base is zero, so the default reads the interrupt
+  # vector table and calls it a secret.
+  '-mstack-protector-guard=global',
   '-fno-strict-aliasing',
   '-fno-builtin',
   '-fno-common',

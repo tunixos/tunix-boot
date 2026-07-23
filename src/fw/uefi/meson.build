@@ -6,6 +6,7 @@ uefi_sources = files(
   '../../log/log.c',
   '../../serial/serial.c',
   'fw_uefi.c',
+  '../../boot/guard.c',
   # Port I/O is the same under either firmware, so both backends carry the
   # driver that uses it; it stays out of the host library because it is the
   # one place that really touches hardware.
