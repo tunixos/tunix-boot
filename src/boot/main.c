@@ -3,6 +3,7 @@
 #include "block/partition.h"
 #include "boot/core.h"
 #include "config/config.h"
+#include "cpu/control.h"
 #include "cpu/cpuid.h"
 #include "elf/elf.h"
 #include "fs/fat.h"
@@ -79,6 +80,8 @@ static struct acpi_tables acpi;
 static struct acpi_processors processors;
 static bool acpi_present;
 static struct pci_devices pci;
+/* Only once the processor has been told the bit means what we mean by it. */
+static bool kernel_no_execute;
 
 /* Enough to tell, from across a room, that the loader reached this point and
    that the mode it was told about is the mode it is drawing on: a border in
@@ -423,13 +426,22 @@ static bool map_segment(const struct elf_segment *segment, bool writable) {
     bytes = (bytes + PAGE_BYTES - 1U) & ~(PAGE_BYTES - 1U);
 
     uint64_t flags = writable ? PAGE_WRITABLE : 0;
-    if (!(segment->flags & ELF_FLAG_EXECUTE)) flags |= PAGE_NO_EXECUTE;
+    /* Only when the processor has been told the bit means what we mean by it;
+       otherwise bit 63 is reserved and the page faults on its first read. */
+    if (!(segment->flags & ELF_FLAG_EXECUTE) && kernel_no_execute) {
+        flags |= PAGE_NO_EXECUTE;
+    }
 
     return paging_map(&kernel_tables, virtual, physical, bytes, flags);
 }
 
 static bool build_kernel_tables(const struct elf_image *kernel,
                                 const struct cpu_features *features) {
+    /* Before any table carries it: without this, bit 63 is a reserved bit and a
+       page marked no-execute faults on the first read, not the first jump. */
+    kernel_no_execute = features->no_execute;
+    if (kernel_no_execute) control_enable_no_execute();
+
     if (!paging_create(&kernel_tables, &loader_arena, features->gigabyte_pages))
         return false;
 
@@ -451,8 +463,19 @@ static bool build_kernel_tables(const struct elf_image *kernel,
         }
     }
 
+    unsigned executable = 0, writable = 0;
+    for (unsigned index = 0; index < kernel->segment_count; index++) {
+        if (kernel->segments[index].flags & ELF_FLAG_EXECUTE) executable++;
+        if (kernel->segments[index].flags & ELF_FLAG_WRITE) writable++;
+    }
+
     LOG_INFO("page tables at %x, %u KiB of them", kernel_tables.root,
              arena_used(&loader_arena) / 1024ULL);
+    /* No segment should be both, and everything that is not executable is
+       marked so in the tables — which only means anything with NX enabled. */
+    LOG_INFO("kernel mapping: %u executable, %u writable, nx %s",
+             (uint64_t)executable, (uint64_t)writable,
+             kernel_no_execute ? "on" : "off");
     return true;
 }
 
