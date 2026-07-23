@@ -1,4 +1,5 @@
 #include "boot/core.h"
+#include "boot/guard.h"
 #include "fw/bios/fw_bios.h"
 #include "log/log.h"
 #include "serial/serial.h"
@@ -14,6 +15,7 @@ void boot_main(uint8_t boot_drive, uint32_t e820_count, uint64_t e820_buffer,
 
 void boot_main(uint8_t boot_drive, uint32_t e820_count, uint64_t e820_buffer,
                uint64_t vbe_mode_info) {
+    guard_init();
     if (serial_init(SERIAL_PORT)) log_set_sink(serial_write_cstr);
 
     LOG_INFO("boot drive %x, %u firmware memory entries",

@@ -1,4 +1,5 @@
 #include "boot/core.h"
+#include "boot/guard.h"
 #include "fw/uefi/uefi.h"
 #include "log/log.h"
 #include "serial/serial.h"
@@ -25,6 +26,7 @@ const struct fw_ops *fw_uefi_init(efi_handle image,
 efi_status efi_main(efi_handle image, struct efi_system_table *system);
 
 efi_status efi_main(efi_handle image, struct efi_system_table *system) {
+    guard_init();
     if (serial_init(SERIAL_PORT)) log_set_sink(serial_write_cstr);
 
     const struct fw_ops *fw = fw_uefi_init(image, system);
