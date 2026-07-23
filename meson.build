@@ -58,7 +58,7 @@ endif
 
 add_project_arguments(common_arguments, language: 'c')
 
-include_directories_root = include_directories('src', 'include')
+include_directories_root = include_directories('src')
 
 nasm = find_program('nasm', required: not building_for_host)
 

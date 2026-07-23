@@ -16,7 +16,7 @@ config: util memory fs log
 video: util memory log
 terminal: util video log
 acpi: util memory log
-smp: util cpu memory acpi log
+# smp: not written — the processor list is enumerated in acpi and handed on
 pci: util cpu memory acpi log
 protocol: util cpu memory fw elf video acpi smp pci log
 boot: util cpu memory fw block fs elf config video terminal acpi smp pci protocol log serial
