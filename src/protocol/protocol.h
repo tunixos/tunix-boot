@@ -40,6 +40,7 @@
 #define BOOT_REQUEST_FRAMEBUFFER 5U
 #define BOOT_REQUEST_ACPI 6U
 #define BOOT_REQUEST_PROCESSORS 7U
+#define BOOT_REQUEST_MODULES 8U
 
 /* The scan steps by this, so a request must be aligned to it. Everything a
    compiler emits for a structure containing a uint64_t already is. */
@@ -134,6 +135,21 @@ struct boot_processors_response {
     struct boot_processor *entries;
 };
 
+/* A file the configuration named, loaded whole and left where it was put. The
+   memory is reported as bootloader-reclaimable like everything else the loader
+   allocated, so a kernel that has consumed a module may take the space back. */
+struct boot_module {
+    uint64_t base;
+    uint64_t bytes;
+    const char *path;
+};
+
+struct boot_modules_response {
+    uint64_t revision;
+    uint64_t count;
+    struct boot_module *entries;
+};
+
 struct boot_loader_info_response {
     uint64_t revision;
     const char *name;
@@ -152,6 +168,8 @@ struct boot_facts {
     /* NULL when the machine has no ACPI tables the loader could believe. */
     const void *rsdp;
     const struct acpi_processors *processors;
+    const struct boot_module *modules;
+    unsigned module_count;
 };
 
 /* Scans `bytes` from `image` for requests and answers each one, allocating

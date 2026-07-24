@@ -258,11 +258,16 @@ static void report_memory(const struct memory_map *map) {
 
 static bool place_arena(const struct memory_map *map, struct arena *arena) {
     uint64_t base;
-    if (!memory_map_find_free(map, LOADER_ARENA_BYTES, LOADER_ARENA_ALIGNMENT,
-                              LOADER_ARENA_FLOOR, &base)) {
+    /* As high as the identity map reaches, not as low as possible. Kernels load
+       low and so do the archives they come with, and the page tables built here
+       have to survive both — they are what the kernel is running on until it
+       installs its own. */
+    if (!memory_map_find_free_high(map, LOADER_ARENA_BYTES,
+                                   LOADER_ARENA_ALIGNMENT,
+                                   LOADER_ADDRESS_LIMIT, &base)) {
         return false;
     }
-    if (base + LOADER_ARENA_BYTES > LOADER_ADDRESS_LIMIT) return false;
+    if (base < LOADER_ARENA_FLOOR) return false;
 
     arena_init(arena, (void *)(uintptr_t)base, LOADER_ARENA_BYTES);
     arena_base = base;
@@ -321,6 +326,8 @@ static bool mount_boot_filesystem(void) {
     return false;
 }
 
+static bool load_modules(const struct config_entry *entry);
+
 static bool read_configuration(void) {
     struct fat_file file;
     if (!fat_open(&boot_volume, CONFIG_PATH, &file)) {
@@ -361,7 +368,56 @@ static bool read_configuration(void) {
 
     LOG_INFO("config: %u entries, timeout %u, booting %s",
              (uint64_t)config.entry_count, config.timeout_seconds, kernel_path);
+    if (!load_modules(entry)) return false;
     LOG_INFO("cmdline from config: %s", command_line);
+    return true;
+}
+
+#define MODULE_PATH_BYTES 128U
+
+static struct boot_module modules[CONFIG_MAX_MODULES];
+static char module_paths[CONFIG_MAX_MODULES][MODULE_PATH_BYTES];
+static unsigned module_count;
+
+/* Loads each file the configuration named, whole, into memory the kernel is
+   told about. They go in the arena rather than at fixed addresses, so a module
+   that grows does not one day land on top of the kernel. */
+static bool load_modules(const struct config_entry *entry) {
+    for (unsigned index = 0; index < entry->module_count; index++) {
+        if (!str_copy_cstr(entry->modules[index], module_paths[index],
+                           MODULE_PATH_BYTES)) {
+            LOG_ERROR("a module path is longer than this loader can hold");
+            return false;
+        }
+
+        struct fat_file file;
+        if (!fat_open(&boot_volume, module_paths[index], &file)) {
+            LOG_ERROR("module %s is not on the filesystem", module_paths[index]);
+            return false;
+        }
+        if (file.size == 0) {
+            LOG_ERROR("module %s is empty", module_paths[index]);
+            return false;
+        }
+
+        void *at = arena_allocate_aligned(&loader_arena, file.size, PAGE_BYTES);
+        if (!at) {
+            LOG_ERROR("no room for module %s", module_paths[index]);
+            return false;
+        }
+        if (!fat_read(&file, 0, file.size, at)) {
+            LOG_ERROR("module %s would not read", module_paths[index]);
+            return false;
+        }
+
+        modules[module_count].base = (uint64_t)(uintptr_t)at;
+        modules[module_count].bytes = file.size;
+        modules[module_count].path = module_paths[index];
+        module_count++;
+
+        LOG_INFO("module %s at %x, %u KiB", module_paths[index],
+                 (uint64_t)(uintptr_t)at, (uint64_t)file.size / 1024ULL);
+    }
     return true;
 }
 
@@ -507,6 +563,8 @@ static bool answer_kernel_requests(const struct elf_image *kernel) {
         .screen = screen_present ? &screen : NULL,
         .rsdp = acpi_present ? acpi.rsdp : NULL,
         .processors = processors.count > 0 ? &processors : NULL,
+        .modules = module_count > 0 ? modules : NULL,
+        .module_count = module_count,
     };
 
     int answered = protocol_answer(

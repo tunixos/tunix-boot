@@ -162,3 +162,31 @@ const char *memory_kind_name(enum memory_kind kind) {
     }
     return "unknown";
 }
+
+bool memory_map_find_free_high(const struct memory_map *map, uint64_t size,
+                               uint64_t alignment, uint64_t limit,
+                               uint64_t *out) {
+    if (size == 0) return false;
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0) return false;
+
+    bool found = false;
+    for (size_t index = 0; index < map->count; index++) {
+        const struct memory_region *region = &map->regions[index];
+        if (region->kind != MEMORY_KIND_USABLE) continue;
+
+        uint64_t end = region_end(region);
+        if (end > limit) end = limit;
+        if (end < size) continue;
+
+        /* The last aligned address the run can start at and still fit. */
+        uint64_t start = (end - size) & ~(alignment - 1);
+        if (start < region->base) continue;
+        if (start + size > end) continue;
+
+        if (!found || start > *out) {
+            *out = start;
+            found = true;
+        }
+    }
+    return found;
+}

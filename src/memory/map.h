@@ -73,6 +73,13 @@ const struct memory_region *memory_map_find(const struct memory_map *map,
 bool memory_map_find_free(const struct memory_map *map, uint64_t size,
                           uint64_t alignment, uint64_t minimum, uint64_t *out);
 
+/* The highest such run, ending at or below `limit`. Kernels and the archives
+   they come with are loaded low, so anything the loader needs to survive being
+   handed over belongs at the other end of memory. */
+bool memory_map_find_free_high(const struct memory_map *map, uint64_t size,
+                               uint64_t alignment, uint64_t limit,
+                               uint64_t *out);
+
 const char *memory_kind_name(enum memory_kind kind);
 
 #endif

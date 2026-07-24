@@ -157,6 +157,29 @@ static bool answer_processors(struct boot_request *request,
     return true;
 }
 
+static bool answer_modules(struct boot_request *request,
+                           const struct boot_facts *facts,
+                           struct arena *arena) {
+    if (!facts->modules || facts->module_count == 0) return true;
+
+    struct boot_modules_response *response =
+        arena_allocate_zeroed(arena, sizeof *response);
+    if (!response) return false;
+
+    response->entries = arena_allocate_array(arena, facts->module_count,
+                                             sizeof *response->entries);
+    if (!response->entries) return false;
+
+    for (unsigned index = 0; index < facts->module_count; index++) {
+        response->entries[index] = facts->modules[index];
+    }
+
+    response->revision = agreed_revision(request->revision);
+    response->count = facts->module_count;
+    request->response = response;
+    return true;
+}
+
 static bool answer_loader_info(struct boot_request *request,
                                struct arena *arena) {
     struct boot_loader_info_response *response =
@@ -187,6 +210,8 @@ static bool answer(struct boot_request *request, const struct boot_facts *facts,
             return answer_acpi(request, facts, arena);
         case BOOT_REQUEST_PROCESSORS:
             return answer_processors(request, facts, arena);
+        case BOOT_REQUEST_MODULES:
+            return answer_modules(request, facts, arena);
         default:
             /* A request this loader has never heard of keeps its null response,
                which is the protocol's way of saying so. */
