@@ -99,6 +99,8 @@ bool fat_mount(struct block_device *device, struct fat_volume *volume) {
     volume->cluster_count =
         clusters > UINT32_MAX ? UINT32_MAX : (uint32_t)clusters;
 
+    volume->fat_sector_valid = false;
+
     if (!cluster_in_range(volume, root_cluster)) return false;
     return true;
 }
@@ -119,9 +121,16 @@ static bool next_cluster(struct fat_volume *volume, uint32_t cluster,
     if (!checked_add_u64(volume->fat_start_sector * volume->bytes_per_sector,
                          offset, &absolute)) return false;
 
-    uint8_t raw[FAT_FAT_ENTRY_BYTES];
-    if (!block_read_bytes(volume->device, absolute, sizeof raw, raw)) return false;
+    uint64_t sector = absolute / volume->bytes_per_sector;
+    if (!volume->fat_sector_valid || volume->fat_sector_index != sector) {
+        if (!block_read(volume->device, sector, 1, volume->fat_sector))
+            return false;
+        volume->fat_sector_index = sector;
+        volume->fat_sector_valid = true;
+    }
 
+    const uint8_t *raw =
+        volume->fat_sector + (absolute % volume->bytes_per_sector);
     uint32_t value = (uint32_t)raw[0] | ((uint32_t)raw[1] << 8) |
                      ((uint32_t)raw[2] << 16) | ((uint32_t)raw[3] << 24);
     *out = value & FAT_CLUSTER_MASK;
@@ -148,14 +157,29 @@ static bool advance(struct fat_volume *volume, uint32_t cluster, uint64_t count,
     return true;
 }
 
-/* Bytes from a cluster chain, which is what both files and directories are. */
+/* Bytes from a cluster chain, which is what both files and directories are.
+   `walk` may be null; when it is not, a read that starts at or after where the
+   last one reached carries on from there instead of from the first cluster. */
 static bool read_chain(struct fat_volume *volume, uint32_t first_cluster,
-                       uint64_t offset, size_t length, void *out) {
+                       uint64_t offset, size_t length, void *out,
+                       struct fat_walk *walk) {
     if (length == 0) return true;
 
-    uint32_t cluster;
-    if (!advance(volume, first_cluster, offset / volume->cluster_bytes, &cluster))
-        return false;
+    uint64_t target_index = offset / volume->cluster_bytes;
+    uint32_t cluster = first_cluster;
+    uint64_t index = 0;
+
+    if (walk && walk->valid && walk->offset <= target_index) {
+        cluster = walk->cluster;
+        index = walk->offset;
+    }
+    if (!advance(volume, cluster, target_index - index, &cluster)) return false;
+
+    if (walk) {
+        walk->cluster = cluster;
+        walk->offset = target_index;
+        walk->valid = true;
+    }
 
     uint8_t *cursor = (uint8_t *)out;
     uint32_t into_cluster = (uint32_t)(offset % volume->cluster_bytes);
@@ -310,7 +334,8 @@ static bool find_in_directory(struct fat_volume *volume, uint32_t cluster,
         FAT_DIRECTORY_ENTRY_BYTES;
 
     while (entries_seen++ < maximum_entries) {
-        if (!read_chain(volume, cluster, offset, sizeof entry, entry)) return false;
+        if (!read_chain(volume, cluster, offset, sizeof entry, entry, NULL))
+            return false;
         offset += FAT_DIRECTORY_ENTRY_BYTES;
 
         uint8_t first = entry[FAT_ENTRY_NAME_OFFSET];
@@ -350,6 +375,7 @@ static bool find_in_directory(struct fat_volume *volume, uint32_t cluster,
                     ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 2U] << 16) |
                     ((uint32_t)entry[FAT_ENTRY_SIZE_OFFSET + 3U] << 24);
         out->directory = (attributes & FAT_ATTRIBUTE_DIRECTORY) != 0;
+        out->walk.valid = false;
         return true;
     }
     return false;
@@ -364,6 +390,7 @@ bool fat_open(struct fat_volume *volume, const char *path,
     current.first_cluster = volume->root_cluster;
     current.size = 0;
     current.directory = true;
+    current.walk.valid = false;
 
     size_t index = 0;
     while (path[index] == PATH_SEPARATOR) index++;
@@ -399,5 +426,6 @@ bool fat_read(struct fat_file *file, uint64_t offset, size_t length, void *out) 
     if (!checked_add_u64(offset, length, &end)) return false;
     if (end > file->size) return false;
 
-    return read_chain(file->volume, file->first_cluster, offset, length, out);
+    return read_chain(file->volume, file->first_cluster, offset, length, out,
+                      &file->walk);
 }

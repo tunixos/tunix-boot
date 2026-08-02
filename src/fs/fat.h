@@ -83,6 +83,23 @@ struct fat_volume {
     uint32_t root_cluster;
     /* Clusters that exist. The bound every chain walk is checked against. */
     uint32_t cluster_count;
+
+    /* The last FAT sector read. Following a chain reads consecutive entries,
+       and with small clusters that is the same sector over and over — a
+       hundred and twenty-eight times for a 512-byte cluster. */
+    uint8_t fat_sector[BLOCK_SECTOR_BYTES_DEFAULT];
+    uint64_t fat_sector_index;
+    bool fat_sector_valid;
+};
+
+/* Where a walk of the cluster chain got to. A chain is a linked list, so
+   reaching byte N means following N/cluster_bytes links; starting from the
+   beginning for every read makes reading a file quadratic in its length, and
+   each link is a sector read from a disk. */
+struct fat_walk {
+    uint64_t offset;
+    uint32_t cluster;
+    bool valid;
 };
 
 struct fat_file {
@@ -90,6 +107,7 @@ struct fat_file {
     uint32_t first_cluster;
     uint32_t size;
     bool directory;
+    struct fat_walk walk;
 };
 
 bool fat_mount(struct block_device *device, struct fat_volume *volume);
