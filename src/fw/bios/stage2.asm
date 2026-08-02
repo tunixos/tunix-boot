@@ -18,6 +18,10 @@ STACK_TOP            equ 0x7C00
 ; grows with the core, so a base just past the loaded image is a base that one
 ; day gets zeroed by the .bss clear below. linker.ld asserts this stays true.
 PAGE_TABLE_BASE      equ 0x40000
+PAGE_TABLE_SEGMENT   equ PAGE_TABLE_BASE >> 4
+PML4_OFFSET          equ 0
+PDPT_OFFSET          equ 0x1000
+PAGE_DIRECTORY_OFFSET equ 0x2000
 PML4_ADDRESS         equ PAGE_TABLE_BASE
 PDPT_ADDRESS         equ PAGE_TABLE_BASE + 0x1000
 PAGE_DIRECTORY_BASE  equ PAGE_TABLE_BASE + 0x2000
@@ -112,6 +116,7 @@ stage2_start:
     call set_video_mode
     call build_page_tables
 
+
     lgdt [gdt_pointer]
 
     mov eax, cr4
@@ -134,6 +139,7 @@ stage2_start:
 
     ; dword: the far jump into 64-bit code needs a 32-bit offset, which a
     ; 16-bit encoding cannot hold.
+
     jmp dword SELECTOR_CODE64:long_mode_entry
 
 ; The fast gate first, then the keyboard controller for the machines that do not
@@ -294,45 +300,56 @@ set_video_mode:
     popad
     ret
 
+; Every access here is ES-relative with a 16-bit offset, which is all a
+; real-mode segment allows. A flat 32-bit offset reaches the same bytes under
+; emulation and general-protection faults on a processor, which is a difference
+; that does not show up until the day something runs this for real.
+;
+; The addresses written *into* the entries are still full physical addresses;
+; only the addressing used to place them is segmented.
 build_page_tables:
     pushad
+    push es
 
-    mov edi, PAGE_TABLE_BASE
-    mov ecx, (PAGE_DIRECTORY_COUNT + 2) * PAGE_TABLE_BYTES / 4
+    mov ax, PAGE_TABLE_SEGMENT
+    mov es, ax
+
+    xor di, di
+    mov cx, (PAGE_DIRECTORY_COUNT + 2) * PAGE_TABLE_BYTES / 4
     xor eax, eax
     rep stosd
 
-    ; Through a register: a 16-bit displacement cannot hold an address this far
-    ; up, and truncating it would put the entry at zero.
-    mov edi, PML4_ADDRESS
-    mov dword [edi], PDPT_ADDRESS | PAGE_PRESENT | PAGE_WRITABLE
+    mov di, PML4_OFFSET
+    mov dword [es:di], PDPT_ADDRESS | PAGE_PRESENT | PAGE_WRITABLE
 
-    mov ecx, PAGE_DIRECTORY_COUNT
-    mov edi, PDPT_ADDRESS
+    mov cx, PAGE_DIRECTORY_COUNT
+    mov di, PDPT_OFFSET
     mov eax, PAGE_DIRECTORY_BASE | PAGE_PRESENT | PAGE_WRITABLE
 .pdpt_entry:
-    mov [edi], eax
+    mov [es:di], eax
     add eax, PAGE_TABLE_BYTES
-    add edi, 8
+    add di, 8
     loop .pdpt_entry
 
     ; Every directory entry is a 2 MiB page mapped to itself.
-    mov edi, PAGE_DIRECTORY_BASE
-    mov ecx, PAGE_DIRECTORY_COUNT * ENTRIES_PER_TABLE
+    mov di, PAGE_DIRECTORY_OFFSET
+    mov cx, PAGE_DIRECTORY_COUNT * ENTRIES_PER_TABLE
     xor eax, eax
 .directory_entry:
     mov ebx, eax
     or ebx, PAGE_PRESENT | PAGE_WRITABLE | PAGE_LARGE
-    mov [edi], ebx
+    mov [es:di], ebx
     add eax, IDENTITY_PAGE_BYTES
-    add edi, 8
+    add di, 8
     loop .directory_entry
 
+    pop es
     popad
     ret
 
 BITS 64
 long_mode_entry:
+
     mov ax, SELECTOR_DATA64
     mov ds, ax
     mov es, ax
