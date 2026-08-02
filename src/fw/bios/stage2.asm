@@ -88,8 +88,8 @@ VBE_WANTED_DEPTH     equ 32
 
 ; What to ask for. Anything else acceptable is kept as a fallback, so a card
 ; without this exact mode still gets a screen.
-VBE_PREFERRED_WIDTH  equ 1024
-VBE_PREFERRED_HEIGHT equ 768
+VBE_PREFERRED_WIDTH  equ 1280
+VBE_PREFERRED_HEIGHT equ 1024
 
 SELECTOR_CODE64      equ 0x08
 SELECTOR_DATA64      equ 0x10
