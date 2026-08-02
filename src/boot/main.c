@@ -28,6 +28,13 @@
    one at least that large. */
 #define LOADER_ADDRESS_LIMIT (4ULL * 1024ULL * 1024ULL * 1024ULL)
 
+/* Where the arena may go. Above it and the kernel and its archives, which load
+   low; below it and a kernel whose early physical allocator only tracks the
+   bottom of memory — a common thing to do — cannot account for the page tables
+   it is still running on. One gigabyte satisfies both on any machine that has
+   that much, and there is nothing else to boot on. */
+#define LOADER_ARENA_CEILING (1024ULL * 1024ULL * 1024ULL)
+
 #define BYTES_PER_MIB (1024ULL * 1024ULL)
 
 /* Where the boot record keeps the mark that says it is one. */
@@ -264,7 +271,7 @@ static bool place_arena(const struct memory_map *map, struct arena *arena) {
        installs its own. */
     if (!memory_map_find_free_high(map, LOADER_ARENA_BYTES,
                                    LOADER_ARENA_ALIGNMENT,
-                                   LOADER_ADDRESS_LIMIT, &base)) {
+                                   LOADER_ARENA_CEILING, &base)) {
         return false;
     }
     if (base < LOADER_ARENA_FLOOR) return false;
@@ -504,6 +511,48 @@ static bool build_kernel_tables(const struct elf_image *kernel,
     if (!paging_map(&kernel_tables, 0, 0, IDENTITY_MAP_BYTES, PAGE_WRITABLE)) {
         LOG_ERROR("could not identity map low memory");
         return false;
+    }
+
+    /* The same memory again at the offset the kernel's own segments use.
+       A higher-half kernel is one linked at a constant distance from where it
+       is loaded, and that distance is the only sensible base for a direct map —
+       it is the one the kernel already computes addresses with. Without it a
+       kernel cannot reach a physical address at all until it has built tables
+       of its own, which it needs to read physical memory to do. */
+    uint64_t direct_base =
+        kernel->segments[0].virtual_address - kernel->segments[0].physical_address;
+    if (direct_base != 0) {
+        /* Only as much as fits above the base: the higher half is not four
+           gigabytes long, and a range that runs off the top of the address
+           space wraps to zero rather than failing. */
+        /* Less the final page: a range ending exactly at the top of the address
+           space has no representable end, and the map refuses it. */
+        uint64_t room = (0U - direct_base) - PAGE_BYTES;
+        uint64_t direct_bytes =
+            room < IDENTITY_MAP_BYTES ? room : IDENTITY_MAP_BYTES;
+
+        uint64_t kernel_low = kernel->lowest_address & ~(PAGE_BYTES - 1U);
+        uint64_t kernel_high =
+            (kernel->highest_address + PAGE_BYTES - 1U) & ~(PAGE_BYTES - 1U);
+
+        /* Around the kernel rather than over it: its own segments are mapped
+           below with the permissions their program headers asked for, and a
+           writable direct map across them would undo that. */
+        if (kernel_low > 0 &&
+            !paging_map(&kernel_tables, direct_base, 0, kernel_low,
+                        PAGE_WRITABLE | (kernel_no_execute ? PAGE_NO_EXECUTE : 0))) {
+            LOG_ERROR("could not map memory below the kernel");
+            return false;
+        }
+        if (kernel_high < direct_bytes &&
+            !paging_map(&kernel_tables, direct_base + kernel_high, kernel_high,
+                        direct_bytes - kernel_high,
+                        PAGE_WRITABLE | (kernel_no_execute ? PAGE_NO_EXECUTE : 0))) {
+            LOG_ERROR("could not map memory above the kernel");
+            return false;
+        }
+        LOG_INFO("direct map at %x, %u MiB", direct_base,
+                 direct_bytes / BYTES_PER_MIB);
     }
 
     for (unsigned index = 0; index < kernel->segment_count; index++) {
