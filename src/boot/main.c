@@ -97,12 +97,17 @@ static bool kernel_no_execute;
 #define SCREEN_BORDER_PIXELS 8U
 #define SCREEN_BAR_PIXELS 32U
 
+/* Black, because a boot screen is a console and a console is black. The text on
+   it is off-white rather than white: white on black at this size shimmers. */
+#define SCREEN_BACKGROUND 0x00, 0x00, 0x00
+#define SCREEN_FOREGROUND 0xD8, 0xD8, 0xD8
+
 static void paint_screen(void) {
     uint32_t width = screen.width;
     uint32_t height = screen.height;
 
     framebuffer_fill(&screen, 0, 0, width, height,
-                     framebuffer_pack(&screen, 0x10, 0x10, 0x18));
+                     framebuffer_pack(&screen, SCREEN_BACKGROUND));
 
     framebuffer_fill(&screen, 0, 0, width, SCREEN_BORDER_PIXELS,
                      framebuffer_pack(&screen, 0xFF, 0x00, 0x00));
@@ -175,8 +180,8 @@ static void acquire_screen(const struct fw_ops *fw) {
     LOG_INFO("screen readback %s", screen_reads_back() ? "ok" : "WRONG");
 
     if (!terminal_init(&screen_terminal, &screen, font8x16(),
-                       framebuffer_pack(&screen, 0xD0, 0xD0, 0xD0),
-                       framebuffer_pack(&screen, 0x10, 0x10, 0x18))) {
+                       framebuffer_pack(&screen, SCREEN_FOREGROUND),
+                       framebuffer_pack(&screen, SCREEN_BACKGROUND))) {
         LOG_INFO("the screen is too small for a terminal");
         return;
     }
