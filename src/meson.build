@@ -26,7 +26,7 @@ block_sources = files(
 
 terminal_sources = files(
   'terminal/terminal.c',
-  'terminal/font8x8.c',
+  'terminal/font8x16.c',
 )
 
 video_sources = files(

@@ -22,7 +22,7 @@ unit_tests = [
   ['terminal', 'test_terminal.c'],
   ['uefi-graphics', 'test_uefi_graphics.c'],
   ['vbe', 'test_vbe.c'],
-  ['font8x8', 'test_font8x8.c'],
+  ['font8x16', 'test_font8x16.c'],
   ['acpi', 'test_acpi.c'],
   ['pci', 'test_pci.c'],
 ]

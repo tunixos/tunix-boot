@@ -11,7 +11,7 @@
 #include "memory/arena.h"
 #include "memory/paging.h"
 #include "pci/pci.h"
-#include "terminal/font8x8.h"
+#include "terminal/font8x16.h"
 #include "protocol/protocol.h"
 
 #define LOADER_ARENA_BYTES (1024ULL * 1024ULL)
@@ -174,7 +174,7 @@ static void acquire_screen(const struct fw_ops *fw) {
     paint_screen();
     LOG_INFO("screen readback %s", screen_reads_back() ? "ok" : "WRONG");
 
-    if (!terminal_init(&screen_terminal, &screen, font8x8(),
+    if (!terminal_init(&screen_terminal, &screen, font8x16(),
                        framebuffer_pack(&screen, 0xD0, 0xD0, 0xD0),
                        framebuffer_pack(&screen, 0x10, 0x10, 0x18))) {
         LOG_INFO("the screen is too small for a terminal");
