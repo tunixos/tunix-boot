@@ -12,8 +12,10 @@
  * The only reason this exists is that a machine which will not boot has to be
  * able to say so to someone who is looking at the screen rather than a serial
  * cable. So it is deliberately the smallest thing that can do that: a cursor,
- * a newline, and scrolling when it runs off the bottom. No colours beyond the
- * two it is given, no escape sequences, no wrapping cleverness.
+ * a newline, and scrolling when it runs off the bottom. The colour it draws in
+ * can be changed between characters, but by a call rather than by escape
+ * sequences in the text — the loader knows what it is printing, and text that
+ * carries its own formatting is text that can lie about it.
  *
  * The font is a parameter rather than something this file contains, which keeps
  * the glyph data out of the logic and lets the tests drive it with a font of
@@ -57,6 +59,10 @@ bool terminal_init(struct terminal *terminal, const struct framebuffer *fb,
                    uint32_t background);
 
 void terminal_clear(struct terminal *terminal);
+
+/* The colour characters are drawn in from here on. The background is left
+   alone: what is already on the screen keeps the colour it was written in. */
+void terminal_set_foreground(struct terminal *terminal, uint32_t colour);
 
 /* Control characters are acted on rather than drawn; everything else advances
    the cursor, wrapping and scrolling as it goes. */

@@ -12,6 +12,7 @@
 
 #define FOREGROUND 0x00FFFFFFU
 #define BACKGROUND 0x00000000U
+#define OTHER_FOREGROUND 0x0000FF00U
 
 /*
  * Three characters, four pixels wide and two rows tall, chosen so every pixel
@@ -138,6 +139,20 @@ static void a_glyph_paints_its_own_background(void) {
                         "#..."));
 }
 
+static void the_colour_changes_between_characters(void) {
+    setup();
+    terminal_put(&terminal, 'A');
+    terminal_set_foreground(&terminal, OTHER_FOREGROUND);
+    terminal_put(&terminal, 'A');
+
+    /* What is already on the screen keeps the colour it was written in, which
+       is the whole point: a line is one colour up to where it changed. */
+    CHECK(framebuffer_get(&fb, 0, 0) == FOREGROUND);
+    CHECK(framebuffer_get(&fb, GLYPH_WIDTH, 0) == OTHER_FOREGROUND);
+    /* The background is not what changed. */
+    CHECK(framebuffer_get(&fb, GLYPH_WIDTH, 1) == BACKGROUND);
+}
+
 static void a_newline_moves_to_the_start_of_the_next_line(void) {
     setup();
     terminal_put(&terminal, 'A');
@@ -240,6 +255,7 @@ TEST_MAIN(
     draws_a_character_where_the_cursor_is();
     a_character_the_font_lacks_is_drawn_as_a_block();
     a_glyph_paints_its_own_background();
+    the_colour_changes_between_characters();
     a_newline_moves_to_the_start_of_the_next_line();
     a_carriage_return_stays_on_the_line();
     a_tab_moves_to_the_next_stop();

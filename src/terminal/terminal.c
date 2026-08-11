@@ -33,6 +33,10 @@ void terminal_clear(struct terminal *terminal) {
     terminal->row = 0;
 }
 
+void terminal_set_foreground(struct terminal *terminal, uint32_t colour) {
+    terminal->foreground = colour;
+}
+
 /* The rows of one glyph, or NULL when the font has no such character. */
 static const uint8_t *glyph_of(const struct terminal_font *font,
                                unsigned char character) {
