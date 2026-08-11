@@ -14,6 +14,7 @@
 
 static log_sink sinks[LOG_MAX_SINKS];
 static unsigned sink_count;
+static log_style style;
 
 static const char *level_tag(int level) {
     switch (level) {
@@ -26,6 +27,15 @@ static const char *level_tag(int level) {
 
 static void emit(const char *text) {
     for (unsigned index = 0; index < sink_count; index++) sinks[index](text);
+}
+
+/* The tag, and only the tag, is written in whatever the style makes of the
+   level: a line is read for what it says, and the level is what says how
+   urgently to read it. */
+static void emit_tag(int level) {
+    if (style) style(level);
+    emit(level_tag(level));
+    if (style) style(LOG_LEVEL_NONE);
 }
 
 static void emit_unsigned(uint64_t value, uint64_t base) {
@@ -58,11 +68,15 @@ bool log_add_sink(log_sink extra) {
     return true;
 }
 
+void log_set_style(log_style new_style) {
+    style = new_style;
+}
+
 void log_emit(int level, const char *format, ...) {
     va_list arguments;
     va_start(arguments, format);
 
-    emit(level_tag(level));
+    emit_tag(level);
 
     char literal[2] = {0, 0};
     for (size_t index = 0; format[index] != '\0'; index++) {

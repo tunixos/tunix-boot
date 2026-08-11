@@ -102,6 +102,13 @@ static bool kernel_no_execute;
 #define SCREEN_BACKGROUND 0x00, 0x00, 0x00
 #define SCREEN_FOREGROUND 0xD8, 0xD8, 0xD8
 
+/* One colour per level, for the tag and nothing else. A boot log is mostly
+   [INFO] and the eye should be able to skip it and land on what is not. */
+#define SCREEN_INFO 0x3C, 0xC8, 0x5A
+#define SCREEN_WARN 0xE0, 0xB4, 0x3C
+#define SCREEN_ERROR 0xE0, 0x4C, 0x4C
+#define SCREEN_DEBUG 0x78, 0x78, 0x78
+
 static void paint_screen(void) {
     uint32_t width = screen.width;
     uint32_t height = screen.height;
@@ -164,6 +171,20 @@ static void screen_sink(const char *text) {
     terminal_write(&screen_terminal, text);
 }
 
+/* The level is a colour on a screen and nothing at all on the serial line,
+   which is why the log asks rather than deciding for itself. */
+static void screen_style(int level) {
+    uint32_t colour;
+    switch (level) {
+        case LOG_LEVEL_ERROR: colour = framebuffer_pack(&screen, SCREEN_ERROR); break;
+        case LOG_LEVEL_WARN:  colour = framebuffer_pack(&screen, SCREEN_WARN); break;
+        case LOG_LEVEL_INFO:  colour = framebuffer_pack(&screen, SCREEN_INFO); break;
+        case LOG_LEVEL_DEBUG: colour = framebuffer_pack(&screen, SCREEN_DEBUG); break;
+        default:              colour = framebuffer_pack(&screen, SCREEN_FOREGROUND); break;
+    }
+    terminal_set_foreground(&screen_terminal, colour);
+}
+
 static void acquire_screen(const struct fw_ops *fw) {
     screen_present = fw_framebuffer_acquire(fw, &screen);
     if (!screen_present) {
@@ -187,6 +208,7 @@ static void acquire_screen(const struct fw_ops *fw) {
     }
     terminal_clear(&screen_terminal);
     log_add_sink(screen_sink);
+    log_set_style(screen_style);
 
     LOG_INFO("terminal %ux%u characters", (uint64_t)screen_terminal.columns,
              (uint64_t)screen_terminal.rows);

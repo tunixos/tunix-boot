@@ -22,6 +22,13 @@ void log_set_sink(log_sink sink);
    there is a screen, and once there is one both should say the same thing. */
 bool log_add_sink(log_sink extra);
 
+/* Called with the level before the tag is written and with LOG_LEVEL_NONE once
+   it has been, so a sink that can show colour colours the tag and not the line
+   after it. A serial line has no use for this and sets none. */
+typedef void (*log_style)(int level);
+
+void log_set_style(log_style style);
+
 /* A deliberately small format language: %s, %u, %x, %p, %%. A bootloader that
    needs more than this in its log is doing something in the log that belongs in
    a data structure. */
